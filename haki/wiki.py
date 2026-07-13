@@ -28,6 +28,7 @@ from pathlib import Path
 from typing import Any
 
 from haki.config import config
+from haki.organism import Organism, LifeStage, Metabolism
 
 logger = logging.getLogger(__name__)
 
@@ -139,7 +140,7 @@ class WikiLintResult:
         return not any([self.contradictions, self.orphan_pages, self.stale_pages])
 
 
-class Wiki:
+class Wiki(Organism):
     """
     The LLM Wiki — a structured, interlinked markdown knowledge base.
     
@@ -153,6 +154,9 @@ class Wiki:
         ├── sources/         # Source summaries
         ├── synthesis/       # Cross-cutting syntheses
         └── insights/        # Extracted insights from memory
+    
+    The wiki is a living organism: it has a lifecycle, metabolism, and
+    can transform. Its stage progresses from birth → growth → maturity.
     """
 
     SCHEMA = """# Haki Wiki Schema
@@ -205,6 +209,7 @@ It is the "research org code" for knowledge management.
 """
 
     def __init__(self):
+        super().__init__("Wiki")
         self._wiki_dir = config.data_dir / "wiki"
         self._initialized = False
 
@@ -229,6 +234,7 @@ It is the "research org code" for knowledge management.
             (self._wiki_dir / "log.md").write_text("# Wiki Log\n\n")
 
         self._initialized = True
+        self.pulse("initialized")
         logger.info("Wiki initialized at %s", self._wiki_dir)
 
     def _page_path(self, page_type: PageType, name: str) -> str:

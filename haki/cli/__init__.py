@@ -76,7 +76,6 @@ def chat(message: str | None, tier: str | None):
         await rag.initialize()
 
         if message:
-            # Single message mode
             tier_choice = None
             if tier == "narrow":
                 tier_choice = TierChoice.NARROW
@@ -93,7 +92,6 @@ def chat(message: str | None, tier: str | None):
                 border_style="cyan",
             ))
         else:
-            # Interactive mode
             console.print(Panel(
                 "[bold]Haki Chat[/bold] — type 'quit' or 'exit' to stop.\n"
                 "Commands: /health, /memory, /search <query>, /remember <text>",
@@ -109,7 +107,6 @@ def chat(message: str | None, tier: str | None):
                 if not user_input.strip():
                     continue
 
-                # Slash commands
                 if user_input == "/health":
                     report = await monitor.check_all()
                     _print_health(report)
@@ -135,7 +132,6 @@ def chat(message: str | None, tier: str | None):
                     console.print("[green]Stored.[/green]")
                     continue
 
-                # Normal chat
                 with console.status("[bold cyan]Thinking...[/bold cyan]"):
                     result = await brain.think(user_input)
                     await memory.learn_from_interaction(user_input, result.text)
@@ -244,16 +240,126 @@ def rag(query: str):
 
 @cli.command()
 def status():
-    """Quick status overview."""
-    console.print(Panel(
-        f"[bold]Haki Status[/bold]\n\n"
-        f"Narrow model: {config.narrow_model_id}\n"
-        f"Wide model: {config.llm_model}\n"
-        f"API configured: {bool(config.llm_api_key)}\n"
-        f"Data dir: {config.data_dir}\n"
-        f"Lab dir: {config.lab_dir}",
-        border_style="cyan",
-    ))
+    """Quick status overview of all living modules."""
+
+    async def _status():
+        from haki.wiki import wiki
+        from haki.memory import memory
+        from haki.lab import lab
+        from haki.brain import brain
+        from haki.daemon.main import HakiDaemon
+
+        table = Table(title="🧠 Haki Living System Status")
+        table.add_column("Module", style="cyan")
+        table.add_column("Stage", style="bold")
+        table.add_column("Ops", justify="right")
+        table.add_column("Errors", justify="right")
+
+        daemon = HakiDaemon()
+        vit = daemon.get_vitality()
+        table.add_row("Daemon", vit["stage"], str(vit["operations"]), "0")
+
+        vit = wiki.get_vitality()
+        table.add_row("Wiki", vit["stage"], str(vit["operations"]), str(int(vit["error_rate"] * vit["operations"])))
+
+        vit = brain.get_vitality() if hasattr(brain, 'get_vitality') else {"stage": "maturity", "operations": 0, "error_rate": 0}
+        table.add_row("Brain", vit["stage"], str(vit["operations"]), str(int(vit["error_rate"] * vit["operations"])))
+
+        vit = lab.get_vitality() if hasattr(lab, 'get_vitality') else {"stage": "birth", "operations": 0, "error_rate": 0}
+        table.add_row("Lab", vit["stage"], str(vit["operations"]), str(int(vit["error_rate"] * vit["operations"])))
+
+        console.print(table)
+        console.print(f"\n[bold]Config:[/bold] narrow={config.narrow_model_id}, wide={config.llm_model}")
+        console.print(f"[bold]Data:[/bold] {config.data_dir}")
+
+    asyncio.run(_status())
+
+
+@cli.group()
+def become():
+    """Becoming operations — the self-questioning protocol."""
+    pass
+
+
+@become.command("status")
+def become_status():
+    """Show the current state of the becoming process."""
+
+    async def _check():
+        from haki.philosophy import becoming
+        from haki.daemon.main import HakiDaemon
+
+        daemon = HakiDaemon()
+        context = await daemon._gather_context()
+        tensions = await becoming.scan_for_tensions(context)
+
+        if not tensions:
+            console.print("[green]No tensions detected — system is in equilibrium.[/green]")
+            return
+
+        table = Table(title="🔍 Becoming: Detected Tensions")
+        table.add_column("Type", style="cyan")
+        table.add_column("Description")
+        table.add_column("Intensity", justify="right")
+
+        for t in tensions:
+            color = "red" if t.intensity > 0.7 else "yellow" if t.intensity > 0.4 else "green"
+            table.add_row(t.type.value, t.description[:60], f"[{color}]{t.intensity:.2f}[/{color}]")
+
+        console.print(table)
+
+    asyncio.run(_check())
+
+
+@become.command("question")
+def become_question():
+    """Generate a question from current tensions."""
+
+    async def _ask():
+        from haki.philosophy import becoming
+        from haki.daemon.main import HakiDaemon
+
+        daemon = HakiDaemon()
+        context = await daemon._gather_context()
+        tensions = await becoming.scan_for_tensions(context)
+
+        if tensions:
+            q = await becoming.generate_question(tensions[0])
+        else:
+            q = await becoming.generate_question(None)
+
+        console.print(Panel(
+            f"[bold cyan]Question:[/bold cyan] {q.text}\n\n"
+            f"Depth: {q.depth} | From tension: {q.source_tension.type.value if q.source_tension else 'probe'}",
+            title="🤔 Becoming Question",
+            border_style="cyan",
+        ))
+
+    asyncio.run(_ask())
+
+
+@become.command("propose")
+def become_propose():
+    """Propose a transformation based on current tensions."""
+
+    async def _propose():
+        from haki.philosophy import becoming
+        from haki.daemon.main import HakiDaemon
+
+        daemon = HakiDaemon()
+        context = await daemon._gather_context()
+        tensions = await becoming.scan_for_tensions(context)
+        proposal = await becoming.propose_transformation(tensions)
+
+        console.print(Panel(
+            f"[bold]Action:[/bold] {proposal['action']}\n"
+            f"[bold]Reason:[/bold] {proposal.get('reason', 'none')}\n"
+            f"[bold]Details:[/bold] {proposal.get('details', '')}",
+            title="🔄 Becoming Proposal",
+            border_style="magenta",
+        ))
+
+    asyncio.run(_propose())
 
 
 @cli.command()
