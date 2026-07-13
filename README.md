@@ -2,17 +2,17 @@
 
 > A cognitive OS that runs a **tiny local model**, improves it in the **Lab**, and **replaces itself** with better versions. **No cloud LLM API.**
 
-**Version:** 0.2.0 · **License:** MIT
+**Version:** 0.3.0 · **License:** MIT
 
 ## What this is
 
 Haki is a **local-first cognitive runtime**:
 
-1. A small base model runs on this machine (default: SmolLM2-360M — ~4GB-class).
-2. Chat and memory feed training data.
-3. The **Lab** fine-tunes LoRA adapters (Autoresearch-style, val_bpb).
-4. When an adapter is better, it is **promoted** into the living brain.
-5. Generation N+1 serves the next chat — the system improves itself.
+1. A **specialized brain** assesses, researches, experiments, and learns (not cloud API).
+2. A small base model (SmolLM2-360M) polishes language when weights are loaded.
+3. Chat + memory feed training data; **mastery.json** tracks competence.
+4. The **Lab** fine-tunes LoRA and **promotes** better adapters into the living brain.
+5. Generation N+1 serves the next chat — continuous self-mastery.
 
 This is **not** a cloud-API wrapper. Hermes remains the daily agent; Haki is the **local model foundry + cognitive substrate**.
 
