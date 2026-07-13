@@ -1,19 +1,22 @@
 # Haki feed — self-improvement only
 
-Six starter documents for **Haki about Haki**. No domain/business content.
+Six **high-density** starter documents for **Haki about Haki**.  
+No business/domain content. Optimized for wiki retrieval + chat quizzes + Lab pairs.
 
 ## Files
 
-| File | Topic |
-|------|--------|
-| `self/01-identity.md` | What Haki is / is not |
-| `self/02-commands.md` | CLI and slash commands |
-| `self/03-evolve-lab.md` | Lab, evolve, promote |
-| `self/04-thinking-mastery.md` | Cognitive loop + mastery map |
-| `self/05-safety-truth.md` | Honesty, heal limits, secrets |
-| `self/06-self-improvement-ritual.md` | Ingest → practice → evolve → kaizen |
+| File | Topic | Use for |
+|------|--------|---------|
+| `self/01-identity.md` | What Haki is / living brain / data home | Identity Q&A |
+| `self/02-commands.md` | CLI + slash commands | Operations |
+| `self/03-evolve-lab.md` | When/how to evolve, labels, promote | Lab self-replacement |
+| `self/04-thinking-mastery.md` | Assess→research→experiment→learn | Metacognition |
+| `self/05-safety-truth.md` | Honesty, heal limits, health meaning | Safe behavior |
+| `self/06-self-improvement-ritual.md` | Full practice loop | Cadence |
 
-## One-shot ingest (from repo root)
+Each file includes **Key facts** and **Quiz pairs** for consistent answers.
+
+## One-shot ingest (repo root)
 
 ```bash
 haki wiki init
@@ -27,6 +30,18 @@ haki wiki ingest feed/self/06-self-improvement-ritual.md -t "Self Improvement Ri
 
 haki wiki status
 haki wiki query "When should I run haki evolve?"
+haki wiki query "What is the thinking loop?"
 ```
 
-Then practice with chat (~20 turns) before `haki evolve`.
+## After ingest
+
+1. Run the quiz list in `06-self-improvement-ritual.md` via `haki chat` (~20 turns).  
+2. `haki mastery` · `haki health` · `haki brain`  
+3. `haki evolve` once machine is free.  
+4. Re-ingest any file you edit, then short re-quiz.
+
+## Quality rules for future feed edits
+
+- One topic per file · prefer tables + quiz pairs  
+- Short sentences · no secrets · no domain data in `feed/self/`  
+- Re-ingest after edits · practice before evolve  

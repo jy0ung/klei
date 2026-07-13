@@ -1,66 +1,103 @@
 # Lab and Self-Evolution
 
+**Tags:** Lab · evolve · LoRA · val_bpb · Autoresearch  
+**Entities:** Lab, LoRA, active_model.json  
+**Concepts:** self-replacement, promote, generation, training pairs, fixed budget
+
 ## Purpose
 
-The Lab is how Haki **creates specialized versions of itself** without cloud training APIs.
+Lab creates **specialized versions of Haki** by fine-tuning LoRA on interaction data, measuring quality, and **replacing the living brain** when better.
 
-Pattern: Autoresearch-style fixed-budget experiment → measure → keep or discard → **promote** if better.
+Pattern: **Autoresearch-style** — experiment → measure → keep/discard → promote if best.
 
 ## When to run `haki evolve`
 
-**Do run** when:
+### Do run
 
-- There are real chat interactions (not only first boot).
-- Self-knowledge or wiki self-docs were recently ingested and exercised in chat.
-- `haki mastery` shows low confidence on self-topics (self, lab-evolve, local-brain).
-- You deliberately want a new LoRA generation.
+- After real chat practice (target **~20+ clean turns** on self topics).  
+- After ingesting/updating `feed/self/*` and quizzing those facts.  
+- When `haki mastery` shows low confidence on `self`, `lab-evolve`, `local-brain`.  
+- When you deliberately want generation N+1.  
+- On an idle machine (CPU fine-tune can take minutes).
 
-**Do not run** on every chat turn. Evolve is heavier than think/research.
+### Do not run
 
-## Pipeline
+- On every single chat message.  
+- With empty memory **and** no self wiki (seed-only is weak specialization).  
+- Expecting overnight GPU Autoresearch quality on first boot with no data.
+
+## Pipeline (exact)
 
 ```
-1. Build training.jsonl from memory interactions
-2. If thin history → seed domain pairs about Haki itself (allow_seed)
-3. Fail-fast if still empty / under min pairs
-4. LoRA fine-tune on the same base model the brain serves
-5. val_bpb ≈ train_loss / ln(2)   (lower is better)
-6. If NEW BEST and lab_auto_promote:
-     write lab/active_model.json
-     brain.promote_adapter → hot reload
-     generation N → N+1
-7. Log lab/results.tsv
+1. training.jsonl ← memory interactions (+ seed pairs if thin)
+2. Fail-fast if pairs < min (default 3)
+3. Import torch/transformers/peft only after data OK
+4. LoRA on same base as brain (SmolLM2-360M-Instruct by default)
+5. Train; val_bpb ≈ train_loss / ln(2)   # lower is better
+6. If NEW BEST and auto-promote:
+     active_model.json ← adapter path + generation
+     brain.promote_adapter → reload
+7. Append lab/results.tsv
 ```
 
-## Critical training rule
+## Critical training rule (do not forget)
 
-Causal LM training **must** pass `labels` (input_ids with pad → -100).  
-Without labels, the Trainer fails: *model did not return a loss, only logits*.
+Causal LM **must** supply **`labels`**.
+
+- `labels = input_ids` with pad tokens set to **-100**.  
+- Without labels:  
+  `The model did not return a loss from the inputs, only the following keys: logits`  
+  → experiment **failed**; no promote.
 
 ## Artifacts
 
 | Path | Meaning |
 |------|---------|
-| `lab/data/training.jsonl` | Instruction/response pairs |
-| `lab/models/<id>/adapter/` | LoRA adapter for one experiment |
-| `lab/active_model.json` | Living brain pointer (base + adapter + generation) |
-| `lab/results.tsv` | Experiment log (keep untracked) |
+| `lab/data/training.jsonl` | `instruction` / `response` lines |
+| `lab/models/<exp_id>/adapter/` | LoRA for one run |
+| `lab/active_model.json` | Living brain registry |
+| `lab/results.tsv` | id, val_bpb, status, description (do not treat as source of secrets) |
 
 ## Base model rules
 
-- Default base: `HuggingFaceTB/SmolLM2-360M-Instruct` (~4GB-class).
-- Never overwrite base weights; only attach/replace LoRA.
-- CPU-first by default (`HAKI_LAB_GPU=false` until measured).
+| Rule | Detail |
+|------|--------|
+| Default base | `HuggingFaceTB/SmolLM2-360M-Instruct` |
+| Immutable base | Never overwrite base checkpoint |
+| Adapter only | Promote LoRA path into living brain |
+| Device | CPU default (`HAKI_LAB_GPU=false` until measured) |
+| Batch | Small (batch 1 + grad accum) for low RAM |
 
-## Success signals after evolve
+## Success checklist after evolve
 
 ```bash
 haki brain
-# generation >= 1 and/or adapter_path set → promotion worked
-# status success + val_bpb set → training computed a metric
+# Want: status success earlier; val_bpb set; optional generation>=1 + adapter_path
 ```
 
-## Relation to specialized brain
+| Signal | Meaning |
+|--------|---------|
+| `status=success` + `val_bpb=...` | Training produced a metric |
+| `NEW BEST + PROMOTED gen=N` | Self-replacement happened |
+| `adapter_path` set on model card | Living brain points at LoRA |
+| `failed` + loss/logits error | Labels/training bug or env issue — fix before re-evolve |
 
-Chat may **experiment** with hypotheses or call Lab only for clear self-improve intents.  
-Explicit `haki evolve` is the deliberate self-replacement path.
+## Relation to chat
+
+- Specialized brain may experiment with **hypotheses** on hard questions.  
+- Lab **evolve** from chat only for clear self-improve intents (or `/evolve`).  
+- Explicit `haki evolve` is the deliberate self-replacement path.
+
+## Quiz pairs
+
+**Q:** When should I run haki evolve?  
+**A:** After ~20 clean practice turns and self wiki ingest, or when mastery on self-topics is low — not every chat message.
+
+**Q:** What metric decides keep/promote?  
+**A:** val_bpb (approx train_loss/ln2); lower is better; promote only if best.
+
+**Q:** Why did train fail with only logits?  
+**A:** Missing labels for causal LM; labels must be input_ids with pad masked to -100.
+
+**Q:** What file points at the living adapter?  
+**A:** `~/.haki/lab/active_model.json`.
