@@ -8,6 +8,8 @@
 |----------|-------------|
 | [Quickstart](quickstart.md) | Install, init, first chat |
 | [Architecture](architecture.md) | System design, data flow, modules |
+| [Philosophy](philosophy.md) | Becoming architecture |
+| [Kaizen](kaizen.md) | Continuous improvement process |
 | [Deployment](deployment.md) | Production setup, Docker, config |
 | [API Reference](api.md) | Full module/function reference |
 | [Contributing](contributing.md) | Dev setup, conventions, testing |

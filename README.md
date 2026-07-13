@@ -49,8 +49,12 @@ haki daemon start
 # Chat with Haki
 haki chat
 
+# Continuous improvement log
+haki kaizen list
+haki kaizen stats
+
 # Run the self-improvement lab
-haki lab run
+haki lab
 
 # Check system health
 haki health

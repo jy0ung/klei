@@ -14,6 +14,7 @@ from dataclasses import dataclass
 from enum import Enum
 
 from haki.config import config
+from haki.organism import Organism
 
 logger = logging.getLogger(__name__)
 
@@ -34,16 +35,18 @@ class BrainResponse:
     error: str | None = None
 
 
-class Brain:
+class Brain(Organism):
     """
     Dual-tier brain that routes queries between a small local model
     and a capable wide model.
     """
 
     def __init__(self):
+        super().__init__("Brain")
         self._narrow_model = None
         self._narrow_tokenizer = None
         self._initialized = False
+        self._route_stats = {"narrow": 0, "wide": 0, "fallback": 0}
 
     async def initialize(self) -> None:
         """Load narrow model, set up wide model client."""
@@ -58,6 +61,7 @@ class Brain:
             logger.warning("Could not load narrow model: %s. Will use wide model only.", e)
 
         self._initialized = True
+        self.pulse("initialized")
 
     async def _load_narrow_model(self) -> None:
         """Load the narrow (small local) model."""
@@ -97,10 +101,16 @@ class Brain:
 
         if force_tier == TierChoice.NARROW or (force_tier is None and self._is_simple_query(query)):
             result = await self._run_narrow(query)
+            self._route_stats["narrow"] += 1
         else:
             result = await self._run_wide(query)
+            self._route_stats["wide"] += 1
 
         result.latency_ms = (time.perf_counter() - start) * 1000
+        if result.error:
+            self.error()
+        else:
+            self.pulse("think", input_bytes=len(query), output_bytes=len(result.text or ""))
         return result
 
     async def _run_narrow(self, query: str) -> BrainResponse:

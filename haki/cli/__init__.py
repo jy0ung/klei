@@ -19,9 +19,9 @@ from rich.markdown import Markdown
 from haki.config import config
 from haki.brain import brain, TierChoice
 from haki.memory import memory, MemoryNode
-from haki.rag import rag
+from haki.rag import rag as rag_mod
 from haki.health import monitor
-from haki.lab import lab
+from haki.lab import lab as lab_mod
 from haki.daemon.bus import bus
 
 console = Console()
@@ -73,7 +73,7 @@ def chat(message: str | None, tier: str | None):
     async def _chat():
         await brain.initialize()
         await memory.initialize()
-        await rag.initialize()
+        await rag_mod.initialize()
 
         if message:
             tier_choice = None
@@ -151,7 +151,7 @@ def health():
 
     async def _check():
         await memory.initialize()
-        await rag.initialize()
+        await rag_mod.initialize()
         report = await monitor.check_all()
         _print_health(report)
 
@@ -191,7 +191,7 @@ def lab(model: str | None, epochs: int):
     async def _lab():
         await brain.initialize()
         await memory.initialize()
-        await lab.initialize()
+        await lab_mod.initialize()
 
         console.print(Panel(
             "[bold]Haki Lab — Autonomous Model Creation[/bold]\n\n"
@@ -200,7 +200,7 @@ def lab(model: str | None, epochs: int):
         ))
 
         with console.status("[bold magenta]Fine-tuning model...[/bold magenta]"):
-            result = await lab.fine_tune_model(model_id=model, epochs=epochs)
+            result = await lab_mod.fine_tune_model(model_id=model, epochs=epochs)
 
         if result.status == "success":
             console.print(Panel(
@@ -225,9 +225,9 @@ def rag(query: str):
     """Query the RAG pipeline."""
 
     async def _rag():
-        await rag.initialize()
+        await rag_mod.initialize()
         await memory.initialize()
-        result = await rag.retrieve(query)
+        result = await rag_mod.retrieve(query)
         console.print(Panel(
             f"Retrieved {len(result.retrieved_chunks)} chunks:\n\n" +
             "\n".join(f"- [{c.get('source', '?')}] {c['text'][:100]}" for c in result.retrieved_chunks),
@@ -245,7 +245,7 @@ def status():
     async def _status():
         from haki.wiki import wiki
         from haki.memory import memory
-        from haki.lab import lab
+        from haki.lab import lab as lab_mod
         from haki.brain import brain
         from haki.daemon.main import HakiDaemon
 
@@ -265,7 +265,7 @@ def status():
         vit = brain.get_vitality() if hasattr(brain, 'get_vitality') else {"stage": "maturity", "operations": 0, "error_rate": 0}
         table.add_row("Brain", vit["stage"], str(vit["operations"]), str(int(vit["error_rate"] * vit["operations"])))
 
-        vit = lab.get_vitality() if hasattr(lab, 'get_vitality') else {"stage": "birth", "operations": 0, "error_rate": 0}
+        vit = lab_mod.get_vitality() if hasattr(lab_mod, 'get_vitality') else {"stage": "birth", "operations": 0, "error_rate": 0}
         table.add_row("Lab", vit["stage"], str(vit["operations"]), str(int(vit["error_rate"] * vit["operations"])))
 
         console.print(table)
@@ -369,14 +369,14 @@ def ingest(path: str):
     import pathlib
 
     async def _ingest():
-        await rag.initialize()
+        await rag_mod.initialize()
         p = pathlib.Path(path)
         if not p.exists():
             console.print(f"[red]File not found: {path}[/red]")
             return
         text = p.read_text()
         with console.status(f"Ingesting {path}..."):
-            await rag.add_document(text, source=p.name)
+            await rag_mod.add_document(text, source=p.name)
         console.print(f"[green]Ingested {path}[/green]")
 
     asyncio.run(_ingest())
@@ -529,6 +529,75 @@ def wiki_status():
         console.print(f"Wiki path: {wiki.wiki_path()}")
 
     asyncio.run(_status())
+
+
+@cli.group()
+def kaizen():
+    """Kaizen — continuous improvement log."""
+    pass
+
+
+@kaizen.command("list")
+@click.option("--limit", "-n", default=20, type=int)
+def kaizen_list(limit: int):
+    """List recent continuous improvements."""
+    from haki.kaizen import kaizen as klog, seed_if_empty
+
+    seed_if_empty()
+    items = klog.list(limit=limit)
+    if not items:
+        console.print("[yellow]No improvements recorded yet.[/yellow]")
+        return
+
+    table = Table(title="📈 Kaizen Log")
+    table.add_column("When", style="dim")
+    table.add_column("Category", style="cyan")
+    table.add_column("Title")
+    table.add_column("Impact")
+
+    for item in items:
+        table.add_row(
+            item.created_at[:16],
+            item.category,
+            item.title[:40],
+            item.impact[:50],
+        )
+    console.print(table)
+
+
+@kaizen.command("add")
+@click.option("--title", "-t", required=True)
+@click.option("--problem", "-p", required=True)
+@click.option("--action", "-a", required=True)
+@click.option("--impact", "-i", required=True)
+@click.option("--category", "-c", default="general")
+def kaizen_add(title: str, problem: str, action: str, impact: str, category: str):
+    """Record a continuous improvement."""
+    from haki.kaizen import kaizen as klog
+
+    entry = klog.record(title=title, problem=problem, action=action, impact=impact, category=category)
+    console.print(Panel(
+        f"[green]Recorded[/green] {entry.id}\n\n"
+        f"[bold]{entry.title}[/bold]\n"
+        f"Problem: {entry.problem}\n"
+        f"Action: {entry.action}\n"
+        f"Impact: {entry.impact}",
+        title="📈 Kaizen",
+        border_style="green",
+    ))
+
+
+@kaizen.command("stats")
+def kaizen_stats():
+    """Show continuous improvement statistics."""
+    from haki.kaizen import kaizen as klog, seed_if_empty
+
+    seed_if_empty()
+    stats = klog.stats()
+    lines = [f"Total improvements: {stats['total']}", f"Log: {stats['path']}", ""]
+    for cat, count in sorted(stats["by_category"].items()):
+        lines.append(f"  {cat}: {count}")
+    console.print(Panel("\n".join(lines), title="📈 Kaizen Stats", border_style="cyan"))
 
 
 if __name__ == "__main__":

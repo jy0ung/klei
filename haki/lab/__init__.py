@@ -19,6 +19,7 @@ from pathlib import Path
 from typing import Any
 
 from haki.config import config
+from haki.organism import Organism
 
 logger = logging.getLogger(__name__)
 
@@ -49,7 +50,7 @@ class ExperimentResult:
         }
 
 
-class Lab:
+class Lab(Organism):
     """
     Autonomous model creation lab.
 
@@ -62,6 +63,7 @@ class Lab:
     """
 
     def __init__(self):
+        super().__init__("Lab")
         self._lab_dir = config.lab_dir
         self._lab_dir.mkdir(parents=True, exist_ok=True)
         self._results: list[ExperimentResult] = []
@@ -75,6 +77,7 @@ class Lab:
         (self._lab_dir / "models").mkdir(exist_ok=True)
         (self._lab_dir / "data").mkdir(exist_ok=True)
         (self._lab_dir / "logs").mkdir(exist_ok=True)
+        self.pulse("initialized")
         logger.info("Lab initialized at %s", self._lab_dir)
 
     async def create_training_data_from_memory(self) -> Path:
@@ -105,14 +108,6 @@ class Lab:
         Fine-tune a small model on collected interaction data.
         Uses PEFT/LoRA for efficient training.
         """
-        import torch
-        from transformers import (
-            AutoModelForCausalLM, AutoTokenizer,
-            TrainingArguments, Trainer,
-        )
-        from peft import LoraConfig, get_peft_model, TaskType
-        from datasets import load_dataset
-
         exp_id = str(uuid.uuid4())[:8]
         result = ExperimentResult(
             id=exp_id,
@@ -120,19 +115,38 @@ class Lab:
             status="running",
         )
 
+        # Kaizen: fail fast before heavy imports if no training data
+        data_path = await self.create_training_data_from_memory()
+        if not data_path.exists() or data_path.stat().st_size == 0:
+            result.status = "failed"
+            result.description_text = "No training data available — interact more first"
+            self.error()
+            self._results.append(result)
+            await self._save_results()
+            return result
+
+        try:
+            import torch
+            from transformers import (
+                AutoModelForCausalLM, AutoTokenizer,
+                TrainingArguments, Trainer,
+            )
+            from peft import LoraConfig, get_peft_model, TaskType
+            from datasets import load_dataset
+        except Exception as e:
+            result.status = "failed"
+            result.description_text = f"Training deps unavailable: {e}"
+            self.error()
+            self._results.append(result)
+            await self._save_results()
+            return result
+
         model_id = model_id or config.narrow_model_id
         output_dir = self._lab_dir / "models" / exp_id
         output_dir.mkdir(parents=True, exist_ok=True)
 
         try:
             start = time.perf_counter()
-
-            # Ensure training data exists
-            data_path = await self.create_training_data_from_memory()
-            if data_path.stat().st_size == 0:
-                result.status = "failed"
-                result.description_text = "No training data available"
-                return result
 
             # Load model
             tokenizer = AutoTokenizer.from_pretrained(model_id, cache_dir=config.models_dir)

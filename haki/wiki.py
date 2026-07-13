@@ -395,23 +395,29 @@ It is the "research org code" for knowledge management.
     async def query(self, question: str, top_k: int = 5) -> dict[str, Any]:
         """
         Query the wiki: find relevant pages, synthesize answer.
+        Kaizen: score title + tags + content (not title/tags alone).
         """
-        # Read index to find pages
-        index_path = self._wiki_dir / "index.md"
-        if not index_path.exists():
-            return {"answer": "Wiki not initialized.", "sources": []}
-
-        index_text = index_path.read_text()
-
         # Collect all pages
         all_pages = await self.get_all_pages()
+        if not all_pages:
+            return {
+                "question": question,
+                "sources": [],
+                "context": "No pages in wiki yet. Ingest sources first.",
+            }
 
-        # Simple keyword matching against index (LLM does this better)
-        question_words = set(question.lower().split())
+        # Tokenize question (simple bag of words)
+        question_words = {w for w in re.findall(r"[a-z0-9]+", question.lower()) if len(w) > 2}
         scored: list[tuple[float, WikiPage]] = []
         for page in all_pages:
-            page_text = (page.title + " " + " ".join(page.tags)).lower()
-            score = len(question_words & set(page_text.split()))
+            title_words = set(re.findall(r"[a-z0-9]+", page.title.lower()))
+            tag_words = set(re.findall(r"[a-z0-9]+", " ".join(page.tags).lower()))
+            content_words = set(re.findall(r"[a-z0-9]+", page.content.lower()[:2000]))
+            score = (
+                3.0 * len(question_words & title_words)
+                + 2.0 * len(question_words & tag_words)
+                + 1.0 * len(question_words & content_words)
+            )
             if score > 0:
                 scored.append((score, page))
 
@@ -423,6 +429,7 @@ It is the "research org code" for knowledge management.
         for p in top_pages:
             context_parts.append(f"## {p.title}\n{p.content[:500]}")
 
+        self.pulse("query", input_bytes=len(question), output_bytes=len(context_parts))
         return {
             "question": question,
             "sources": [{"title": p.title, "path": p.path, "tags": p.tags} for p in top_pages],
