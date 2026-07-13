@@ -1,0 +1,57 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "haki"
+version = "0.1.0"
+description = "Cognitive OS with brain, self-learning, self-healing, and autonomous model creation"
+readme = "README.md"
+license = {text = "MIT"}
+requires-python = ">=3.10"
+authors = [{name = "jy0ung"}]
+dependencies = [
+    "pydantic>=2.0",
+    "pydantic-settings>=2.0",
+    "sqlalchemy>=2.0",
+    "aiosqlite>=0.19",
+    "httpx>=0.25",
+    "click>=8.1",
+    "rich>=13.0",
+    "textual>=0.50",
+    "numpy>=1.24",
+    "faiss-cpu>=1.7",
+    "sentence-transformers>=2.2",
+    "torch>=2.0",
+    "transformers>=4.35",
+    "accelerate>=0.25",
+    "bitsandbytes>=0.41",
+    "peft>=0.7",
+    "datasets>=2.14",
+    "trl>=0.7",
+    "orjson>=3.9",
+    "watchdog>=3.0",
+    "uvloop>=0.19; sys_platform!='win32'",
+]
+
+[project.optional-dependencies]
+dev = ["pytest", "pytest-asyncio", "ruff", "mypy"]
+gpu = ["faiss-gpu>=1.7"]
+
+[project.scripts]
+haki = "haki.cli.main:cli"
+
+[tool.hatch.build.targets.wheel]
+packages = ["haki"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"
+
+[tool.mypy]
+python_version = "3.10"
+strict = false
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
