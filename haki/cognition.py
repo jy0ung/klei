@@ -177,14 +177,34 @@ class SpecializedBrain(Organism):
         from haki.mastery import mastery
 
         conf, topics = mastery.confidence_for_query(query)
-        # Builtin self-knowledge boosts
-        q = query.lower()
-        if any(k in q for k in ("who are you", "what are you", "what is haki", "how do you")):
+        q = query.lower().strip()
+        # Strip greetings to avoid garbage topic slugs
+        q_clean = q.rstrip(".,!?:;")
+        greetings = {"hi", "hey", "hello", "howdy", "yo", "good morning", "good evening", "sup", "what's up", "how are you", "are you okay", "you ok"}
+        is_greeting = q_clean in greetings or any(q_clean.startswith(g + " ") or q_clean == g for g in greetings)
+
+        # Self-identity patterns (what ARE you, what DO you do, what CAN you do, etc.)
+        self_id_words = q.split()
+        self_identity_detect = any(k in q for k in (
+            "who are you", "what are you", "what is haki", "how do you",
+            "what do you do", "what can you do", "what are you capable",
+            "tell me about yourself", "describe yourself", "what is your purpose",
+        ))
+
+        if self_identity_detect:
             conf = max(conf, 0.75)
             topics = topics or [mastery.upsert_topic("Self", "self")]
+        elif is_greeting:
+            # Greetings aren't knowledge tasks — treat as self-identity adjacency
+            conf = max(conf, 0.55)
+            topics = topics or [mastery.upsert_topic("Self", "self")]
+
         if any(k in q for k in ("evolve", "lab", "fine-tune", "lora", "val_bpb")):
             conf = max(conf, 0.5)
             mastery.upsert_topic("Lab evolve", "lab-evolve")
+        if any(k in q for k in ("health", "status", "how are you", "are you okay", "you ok")):
+            conf = max(conf, 0.45)
+            mastery.upsert_topic("Health check", "health")
         return conf, topics
 
     async def _research(self, query: str) -> tuple[list[str], list[str]]:
@@ -332,7 +352,7 @@ class SpecializedBrain(Organism):
         q = query.lower().strip()
         lines: list[str] = []
 
-        # Identity / self
+        # Identity / self (first: what are you; also: what do you do / what can you do)
         if any(k in q for k in ("who are you", "what are you", "what is haki")):
             lines.append(
                 "I am **Haki's specialized brain** — a local cognitive runtime. "
@@ -345,6 +365,29 @@ class SpecializedBrain(Organism):
             )
             return "\n".join(lines)
 
+        # Functional identity: what do you do / what can you do / what is your purpose
+        if any(k in q for k in ("what do you do", "what can you do", "what are you capable",
+                               "your purpose", "describe yourself", "tell me about yourself")):
+            lines.append("I am **Haki's specialized brain** — a local-only cognitive OS.")
+            lines.append("These are my core capabilities:")
+            lines.append("- **Think** (assess → research → experiment → synthesize → learn) on any topic you ask about.")
+            lines.append("- **Research** in real time: memory (past interactions), wiki (compiled knowledge), and RAG (documents).")
+            lines.append("- **Experiment** with hypotheses when I'm unsure; store them as insights.")
+            lines.append("- **Self-evolve** via Lab: fine-tune LoRA adapters on our interactions and promote the best ones to replace my brain (generation N → N+1).")
+            lines.append("- **Monitor health** (`haki health`) and **self-heal** degraded components.")
+            lines.append("- **Compile knowledge** into a wiki (`haki wiki ingest`) so facts compound instead of fading.")
+            lines.append("- **Measure what I know** via the mastery map (`haki mastery`).")
+            if conf < KNOW_THRESHOLD and research_bits:
+                lines.append(f"\nResearch found {len(research_bits)} supporting items. Confidence is moderate; I log gaps to mastery and improve with practice.")
+            return "\n".join(lines)
+
+        # "Are you okay / how are you" → health-focused
+        if any(k in q for k in ("are you ok", "are you okay", "how are you", "are you alright")):
+            lines.append("I am operational — the specialized brain loop is running.")
+            lines.append(f"Latest self-check: phases={'+'.join(trace.phases[-3:])} conf={conf:.2f} gen={trace.generation}.")
+            lines.append("Health details: `haki health` for component-level status (brain may be idle until weights load — that's normal).")
+            return "\n".join(lines)
+
         if any(k in q for k in ("how do you think", "how do you learn", "master yourself")):
             lines.append("**Thinking loop:** assess → research → experiment → synthesize → learn.")
             lines.append(f"This episode phases: {', '.join(trace.phases)}")
@@ -355,8 +398,47 @@ class SpecializedBrain(Organism):
             )
             return "\n".join(lines)
 
-        # Generic synthesis from research
+        # Generic synthesis from research — prefer wiki facts over raw insight dump
         if research_bits:
+            # Filter out noise: prefer wiki facts; memory insights are frequently noise on generic Qs
+            wiki_bits = [b for b in research_bits if b.startswith("[wiki]")]
+            mem_bits = [b for b in research_bits if b.startswith("[memory/insight]") or b.startswith("[memory/user") or b.startswith("[memory/assistant")]
+            other_bits = [b for b in research_bits if not (b.startswith("[wiki]") or b.startswith("[memory/"))]
+
+            # If wiki has strong signal, synthesize a clean single answer from wiki content
+            if wiki_bits:
+                best = wiki_bits[0].replace("[wiki] ", "", 1).strip()[:600]
+                # Extract the title and first paragraph-like content
+                title = best.split("\n")[0].strip("# ").strip()
+                body = "\n".join(best.split("\n")[1:]).strip()
+                # Remove raw source metadata (Ingested from, Tags, Entities, etc.) if present
+                body = body.split("---")[0].strip()
+                # Give a real synthesis, not raw chunks
+                lines.append(f"From my wiki knowledge on **{title}**:\n")
+                lines.append(body[:500] if body else best[:500])
+                lines.append(f"\n\n*Confidence: {conf:.2f} · researched from {len(wiki_bits)} wiki + {len(mem_bits)} memory sources.*")
+                return "\n".join(lines)
+
+            # Memory-based answer (when wiki is thin)
+            if mem_bits:
+                # Limit to 3 unique, meaningful insights
+                seen = set()
+                unique_mem = []
+                for b in mem_bits:
+                    key = b[:60]
+                    if key not in seen and not any(w in b.lower() for w in ("hi, ", "hello", "what do you")):
+                        seen.add(key)
+                        unique_mem.append(b)
+                if unique_mem:
+                    lines.append(f"**Confidence:** {conf:.2f} · based on recent memory.\n")
+                    for b in unique_mem[:4]:
+                        clean = b.replace("[memory/insight] ", "• ").replace("[memory/user] ", "• ").replace("[memory/assistant] ", "• ")
+                        lines.append(clean[:200])
+                    if conf < KNOW_THRESHOLD:
+                        lines.append(f"\nConfidence is moderate. I logged gaps to mastery and will improve with more focused practice.")
+                    return "\n".join(lines)
+
+            # Generic fallback with raw chunks
             lines.append(f"**Confidence:** {conf:.2f} · **Topics:** {', '.join(trace.topics) or 'general'}")
             lines.append("**What I found:**")
             for b in research_bits[:6]:
