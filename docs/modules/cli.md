@@ -1,17 +1,19 @@
 # CLI Module
 
-Rich-based command-line interface for Haki.
+Rich + Click interface for local-only Haki.
 
-## Commands (v0.1.2)
+## Commands (v0.2.0)
 
 ```
 haki init
 haki daemon
-haki chat [-m MSG] [--tier narrow|wide]
+haki chat [-m MSG]
+haki brain
+haki evolve [-e EPOCHS] [-n LOOPS]
+haki lab [-m MODEL] [-e EPOCHS]
 haki health
 haki heal
 haki status
-haki lab [-m MODEL] [-e EPOCHS]
 haki rag <query>
 haki ingest <path>
 haki wiki init|ingest|query|lint|status
@@ -19,81 +21,45 @@ haki become status|question|propose
 haki kaizen list|add|stats
 ```
 
-## Chat
+## Chat (local)
 
 ```bash
 haki chat
-haki chat -m "What is Haki?"
-haki chat --tier wide -m "Explain the architecture"
+haki chat -m "Who are you?"
 ```
 
-Interactive slash commands:
+Slash commands:
 
 | Command | Action |
 |---------|--------|
+| `/brain` | Model card |
+| `/evolve` | One evolution cycle |
 | `/health` | Health table |
 | `/memory` | Recent memories |
 | `/search <q>` | Memory search |
 | `/remember <text>` | Store insight |
-| `quit` / `exit` | Leave |
 
-## Health & Heal
+No `--tier` / no API options.
 
-```bash
-haki health
-haki heal
-```
-
-## Status (organisms)
+## Evolve
 
 ```bash
-haki status
+haki evolve
+haki evolve -n 5 -e 1
 ```
 
-Shows Daemon / Wiki / Brain / Lab stage + ops + errors.
-
-## Wiki
+## Brain card
 
 ```bash
-haki wiki init
-haki wiki ingest file.md -t "Title" -e "Entity1,Entity2" -c "Concept1"
-haki wiki query "question" -k 5
-haki wiki lint
-haki wiki status
+haki brain
 ```
-
-## Becoming
-
-```bash
-haki become status
-haki become question
-haki become propose
-```
-
-## Kaizen
-
-```bash
-haki kaizen list -n 20
-haki kaizen stats
-haki kaizen add -t "..." -p "..." -a "..." -i "..." -c defect
-```
-
-## Lab
-
-```bash
-haki lab
-haki lab --epochs 1 --model TinyLlama/TinyLlama-1.1B-Chat-v1.0
-```
-
-Uses memory interactions; seeds baseline pairs if history is thin.
 
 ## Implementation notes
 
-- Click group + Rich panels/tables  
-- Module imports use aliases (`lab_mod`, `rag_mod`) to avoid shadowing CLI command names  
+- `lab_mod` / `rag_mod` import aliases avoid shadowing command names  
 - Async modules bridged via `asyncio.run`  
 
 ## Related
 
-- [api.md](../api.md)  
 - [quickstart.md](../quickstart.md)  
+- [api.md](../api.md)  

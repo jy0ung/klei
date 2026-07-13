@@ -1,60 +1,72 @@
 # Lab Module
 
-Autonomous model creation (Autoresearch-style), `Lab(Organism)`.
+Autoresearch-style **self-evolution**: train LoRA on memory, keep lower val_bpb, **replace the living brain**.
+
+`Lab(Organism)` — no cloud trainer API.
 
 ## Pipeline
 
-1. Build `training.jsonl` from memory interactions  
-2. If pairs < `HAKI_LAB_MIN_TRAINING_PAIRS`, **seed** baseline domain pairs (unless `allow_seed=False`)  
-3. Fail fast before torch/transformers import if still empty / under threshold  
-4. LoRA fine-tune  
-5. Approximate `val_bpb = val_loss / log(2)`  
-6. Log `results.tsv`, keep best adapter  
+```
+1. create_training_data_from_memory(allow_seed=True|False)
+2. pair count gate (HAKI_LAB_MIN_TRAINING_PAIRS)
+3. import torch/transformers/peft only after data OK
+4. LoRA fine-tune on HAKI_BASE_MODEL_ID
+5. val_bpb ≈ val_loss / ln(2)
+6. if NEW BEST and HAKI_LAB_AUTO_PROMOTE:
+     promote_to_brain() → brain.promote_adapter + reload
+7. log results.tsv
+```
 
-## Seed pairs
-
-When chat history is thin, Lab seeds instruction pairs about Haki itself (what it is, health, becoming, kaizen, fine-tune prerequisites). This makes Lab smoke-testable immediately.
-
-## API
+## Self-evolution API
 
 ```python
 from haki.lab import lab
 
 await lab.initialize()
-path = await lab.create_training_data_from_memory(allow_seed=True)
-n = lab.training_pair_count(path)
-result = await lab.fine_tune_model(epochs=1, allow_seed=True)
+
+# One cycle (train → maybe replace brain)
+result = await lab.evolve_once(epochs=1)
 print(result.status, result.val_bpb, result.description_text)
+
+# Multiple cycles
+results = await lab.evolve_loop(max_experiments=10)
+
+# Explicit fine-tune
+result = await lab.fine_tune_model(allow_seed=True)
 ```
+
+## Seed data
+
+If interactions &lt; min pairs, Lab seeds domain instruction pairs so evolution can smoke-test offline. Disable with `allow_seed=False`.
 
 ## CLI
 
 ```bash
-haki lab
-haki lab --epochs 1 --model TinyLlama/TinyLlama-1.1B-Chat-v1.0
+haki evolve -n 3 -e 1
+haki lab --epochs 1
 ```
 
 ## Outputs
 
 ```
 ~/.haki/lab/
+  active_model.json          # living brain pointer
   data/training.jsonl
-  models/<exp_id>/adapter/
+  models/<exp_id>/adapter/   # LoRA generations
   results.tsv
-  logs/
 ```
 
-## Metrics
+## Defaults (4GB-friendly)
 
-| Metric | Meaning |
+| Config | Default |
 |--------|---------|
-| `val_bpb` | bits-per-byte proxy (lower better) |
-| `val_loss` | CE loss |
-| `training_seconds` | wall time |
-| `peak_vram_mb` | CUDA peak if available |
+| `lab_gpu` | `false` (CPU) |
+| `lab_auto_promote` | `true` |
+| batch | 1 + grad accum 4 |
+| max seq | 256 tokens |
 
 ## Related
 
-- Autoresearch skill / Karpathy loop  
-- [memory.md](memory.md)  
-- [kaizen.md](../kaizen.md)  
+- Karpathy Autoresearch skill  
+- [brain.md](brain.md)  
+- [architecture.md](../architecture.md)  

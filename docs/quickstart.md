@@ -3,8 +3,9 @@
 ## Prerequisites
 
 - Python 3.10+
-- 8GB+ RAM (16GB recommended)
-- Optional: NVIDIA GPU for Lab fine-tuning / narrow model
+- **4GB+ RAM** for default SmolLM2-360M (8GB+ more comfortable)
+- Optional: NVIDIA GPU for faster Lab fine-tunes (`HAKI_LAB_GPU=true`)
+- Disk for HF model cache under `~/.haki/models/`
 
 ## Install
 
@@ -12,8 +13,7 @@
 git clone https://github.com/jy0ung/klei.git
 cd klei
 pip install -e .
-# optional dev tools
-pip install -e ".[dev]"
+pip install -e ".[dev]"   # optional tests
 ```
 
 ## Initialize
@@ -22,86 +22,79 @@ pip install -e ".[dev]"
 haki init
 ```
 
-Creates under `~/.haki/` (or `HAKI_DATA_DIR`):
+Creates `~/.haki/` (or `HAKI_DATA_DIR`):
 
-- `models/` — model cache  
+- `models/` — base model cache  
 - `memory.db` — memory graph  
-- `lab/` — experiments  
+- `lab/` — experiments + `active_model.json`  
 - `wiki/` — after `haki wiki init`  
-- `kaizen.jsonl` — after first kaizen seed/list  
 
-## Configure
+## Configure (optional)
 
-`.env` or environment:
+**No API key required.** Local-only defaults:
 
 ```bash
-HAKI_LLM_API_KEY=sk-...
-HAKI_LLM_API_BASE=https://api.openai.com/v1
-HAKI_LLM_MODEL=gpt-4o-mini
-# optional
-HAKI_NARROW_MODEL_ID=TinyLlama/TinyLlama-1.1B-Chat-v1.0
+# .env
+HAKI_BASE_MODEL_ID=HuggingFaceTB/SmolLM2-360M-Instruct
+HAKI_MODEL_CPU=true
+HAKI_LAB_GPU=false
+HAKI_LAB_AUTO_PROMOTE=true
 HAKI_LAB_MIN_TRAINING_PAIRS=3
+HAKI_MODEL_MAX_NEW_TOKENS=128
 ```
 
-Without `HAKI_LLM_API_KEY`, wide-model chat returns a configuration error (narrow may still load if weights are available).
-
-## First Chat
+## First chat (local)
 
 ```bash
-# Single message
-haki chat -m "Hello, what can you do?"
-
-# Interactive
+haki chat -m "Who are you?"
 haki chat
 ```
 
-Slash commands in interactive mode:
+Until base weights finish downloading, Haki answers in **rule-fallback** mode (still offline).
 
-- `/health` — health report  
-- `/memory` — recent memories  
-- `/search <query>` — semantic search  
-- `/remember <text>` — store insight  
+Interactive extras:
 
-## Health & Self-Heal
+- `/brain` — model card  
+- `/evolve` — one Lab evolution cycle  
+- `/health`, `/memory`, `/search`, `/remember`  
+
+## Brain status
+
+```bash
+haki brain
+```
+
+Shows base model, adapter path, generation, loaded flag, load errors.
+
+## Self-evolution
+
+```bash
+# One cycle: train on memory → promote if better
+haki evolve
+
+# Several cycles
+haki evolve -n 5 -e 1
+
+# Explicit lab fine-tune
+haki lab --epochs 1
+```
+
+Results: `~/.haki/lab/results.tsv`  
+Living pointer: `~/.haki/lab/active_model.json`
+
+## Health & self-heal
 
 ```bash
 haki health
-haki heal          # one autonomous recovery cycle (low-risk)
+haki heal
 ```
 
-## Kaizen
-
-```bash
-haki kaizen list
-haki kaizen stats
-haki kaizen add -t "title" -p "problem" -a "action" -i "impact" -c defect
-```
-
-## Wiki
+## Wiki & Kaizen
 
 ```bash
 haki wiki init
-haki wiki ingest notes.md --title "Notes" --entities "Haki" --concepts "cognitive OS"
-haki wiki query "What is Haki?"
-haki wiki lint
-haki wiki status
-```
-
-## Lab
-
-```bash
-# Uses real interactions if present; otherwise seeds baseline pairs
-haki lab --epochs 1
-cat ~/.haki/lab/results.tsv
-```
-
-## Becoming
-
-```bash
-haki become status      # tensions
-haki become question    # system question
-haki become propose     # transformation proposal
-haki status             # organism vitality table
+haki wiki ingest notes.md --entities "Haki" --concepts "local AI"
+haki kaizen list
 ```
 
 ## Daemon
@@ -110,13 +103,7 @@ haki status             # organism vitality table
 haki daemon
 ```
 
-Runs:
-
-- health monitor (`HAKI_HEALTH_INTERVAL`, default 30s)  
-- becoming loop (5m)  
-- self-heal loop (`HAKI_SELF_HEAL_INTERVAL`, default 300s)  
-
-Stop with Ctrl+C.
+Runs health + becoming + self-heal loops. Stop with Ctrl+C.
 
 ## Tests
 
@@ -126,7 +113,6 @@ pytest tests/ -v
 
 ## Next
 
-- [Architecture](architecture.md)  
-- [Philosophy](philosophy.md)  
-- [Kaizen](kaizen.md)  
-- [API](api.md)  
+- [Architecture](architecture.md) — full design  
+- [Brain](modules/brain.md) · [Lab](modules/lab.md)  
+- [CHANGELOG](CHANGELOG.md)  

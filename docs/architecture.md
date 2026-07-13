@@ -1,25 +1,27 @@
 # Architecture
 
-**Version:** 0.1.2
+**Version:** 0.2.0 — local-only self-evolving brain
 
 ## Design Principles
 
-1. **Intent-centric** — human sets goals; Haki operates modules  
-2. **Becoming, not being** — modules are living organisms with lifecycle + metabolism  
-3. **Compounding knowledge** — Wiki compiles sources; Memory captures interactions  
-4. **Kaizen** — small permanent fixes, measured and logged  
-5. **Low-risk self-heal** — recover without destructive side effects  
+1. **Local-only inference** — no cloud LLM API for the product brain  
+2. **Self-replacement** — Lab promotes better adapters into the living brain  
+3. **Becoming, not being** — modules are organisms with lifecycle + metabolism  
+4. **Compounding knowledge** — Wiki compiles; Memory captures; Lab specializes  
+5. **Kaizen** — small permanent fixes, measured and logged  
+6. **Low-risk self-heal** — recover without surprise model downloads  
 
 ## Research Pillars
 
-| Pillar | Source | Role |
-|--------|--------|------|
-| **Brain** | [CognitiveOS](https://cognitive-os.org/) | Dual-tier orchestration |
-| **Memory** | [Honcho](https://docs.honcho.to/) | Graph + Theory of Mind |
-| **Wiki** | [LLM Wiki](https://gist.github.com/karpathy/442a6bf555914893e9891c11519de94f) | Persistent markdown knowledge |
-| **RAG** | [AWS](https://aws.amazon.com/what-is/retrieval-augmented-generation/) | Retrieval grounding |
-| **Lab** | [Autoresearch](https://github.com/karpathy/autoresearch) | Experiment / fine-tune loop |
-| **Self-Heal** | Self-healing agent patterns | L2 recovery cycles |
+| Pillar | Source | Role in Haki |
+|--------|--------|----------------|
+| **Brain** | CognitiveOS (intent layer) | Local tiny model + LoRA generations |
+| **Memory** | Honcho | Graph + Theory of Mind |
+| **Wiki** | Karpathy LLM Wiki | Compiled markdown knowledge |
+| **RAG** | AWS RAG pattern | Retrieval grounding |
+| **Lab** | Karpathy Autoresearch | Fixed-budget train → val_bpb → keep/promote |
+| **Self-Heal** | Self-healing agents | L2 recovery |
+| **Kaizen** | Continuous improvement | Defect/waste log |
 
 ## System Layers
 
@@ -27,102 +29,130 @@
 ┌─────────────────────────────────────────────────────────────────┐
 │                        User (Human)                              │
 ├─────────────────────────────────────────────────────────────────┤
-│              CLI (Rich) · MCP tools · status / heal              │
+│     CLI (Rich) · MCP · brain / evolve / heal / kaizen            │
 ├─────────────────────────────────────────────────────────────────┤
 │   hakid — MessageBus + Health + Becoming + SelfHealer            │
-├──────────────────┬──────────────────────────────────────────────┤
-│  Narrow Model    │  Wide Model (LLM API)                         │
-├──────────────────┴──────────────────────────────────────────────┤
-│ Memory │ Wiki │ RAG │ Lab │ Health │ Kaizen │ Philosophy         │
 ├─────────────────────────────────────────────────────────────────┤
-│                    Host OS (Linux / Win / Mac)                    │
+│                                                                  │
+│   LOCAL BRAIN (generation N)                                     │
+│   ┌──────────────────────────────────────────────────────────┐   │
+│   │  Base: SmolLM2-360M-Instruct (or HAKI_BASE_MODEL_ID)     │   │
+│   │  + optional LoRA from ~/.haki/lab/active_model.json      │   │
+│   │  Rule fallback if weights not loaded                     │   │
+│   └──────────────────────────────────────────────────────────┘   │
+│                         ▲ promote if better val_bpb              │
+│                         │                                        │
+│   LAB (Autoresearch-style)                                       │
+│   train LoRA on memory/seed → evaluate val_bpb → keep/discard    │
+│                                                                  │
+├─────────────────────────────────────────────────────────────────┤
+│ Memory │ Wiki │ RAG │ Health │ Kaizen │ Philosophy               │
+├─────────────────────────────────────────────────────────────────┤
+│                    Host OS (Linux / Win / Mac)                   │
 └─────────────────────────────────────────────────────────────────┘
 ```
+
+## Self-evolution (core product loop)
+
+```
+1. User chats → Memory.learn_from_interaction
+2. haki evolve / Lab.evolve_once
+3. Build training.jsonl (interactions + seed if thin)
+4. LoRA fine-tune on base model (CPU by default)
+5. val_bpb ≈ val_loss / ln(2)
+6. If best:
+     write active_model.json
+     brain.promote_adapter() → reload
+     generation N → N+1
+7. Next think() uses the new living brain
+```
+
+### active_model.json
+
+```json
+{
+  "base_model": "HuggingFaceTB/SmolLM2-360M-Instruct",
+  "adapter_path": "C:/Users/.../.haki/lab/models/<id>/adapter",
+  "val_bpb": 0.99,
+  "generation": 3,
+  "description": "increase LoRA rank..."
+}
+```
+
+Path: `~/.haki/lab/active_model.json` (`config.active_model_registry`).
 
 ## Living Modules (Organisms)
 
 | Module | Class | Notes |
 |--------|-------|-------|
-| Brain | `Brain(Organism)` | Routes + pulses on think |
+| Brain | `Brain(Organism)` | Local generate + promote/reload |
 | Memory | `MemoryGraph(Organism)` | Insights + user model |
 | Wiki | `Wiki(Organism)` | Markdown graph |
-| Lab | `Lab(Organism)` | Fine-tune + seed data |
+| Lab | `Lab(Organism)` | Evolve + auto-promote |
 | Health | `HealthMonitor(Organism)` | Checks + recovery |
 | Daemon | `HakiDaemon(Organism)` | Orchestrates loops |
 | Self-Heal | `SelfHealer(Organism)` | Autonomous recovery |
 
 ## Data Flow
 
-### 1. Query Processing
+### 1. Query (local)
 
 ```
 User → CLI chat
-     → Brain.think(query)   # narrow | wide
+     → Brain.think(query)     # local model or rule fallback
      → Memory.learn_from_interaction()
-     → insights + user_model update
-     → response panel
+     → insights + user_model
+     → response (shows generation N)
 ```
 
-### 2. Memory Self-Learning
+### 2. Memory self-learning
 
 ```
-interaction
-  → store in SQLite
-  → multi-pattern insight extraction
-  → embeddings (sentence-transformers)
-  → FAISS index
-  → Theory of Mind user_model row
+interaction → SQLite
+           → multi-pattern insights
+           → embeddings + FAISS
+           → user_model (Theory of Mind)
 ```
 
-### 3. Wiki Knowledge Compile
+### 3. Wiki compile
 
 ```
-source ingest
-  → sources/ page
-  → entities/ + concepts/
-  → index.md + log.md
-  → content-aware query (title×3 + tags×2 + content×1)
+ingest → sources/entities/concepts
+      → index.md + log.md
+      → content-aware query
 ```
 
 ### 4. RAG
 
 ```
-query → memory vectors + doc index → top_k → augmented prompt
+query → memory + doc vectors → top_k → augmented prompt
+      → (optionally) Brain.think
 ```
 
 ### 5. Lab / Autoresearch
 
 ```
-interactions (or seed pairs)
+memory (+ seed pairs if allow_seed)
   → training.jsonl
-  → LoRA fine-tune (after min pair gate)
-  → val_bpb approximation
-  → results.tsv + best adapter path
+  → LoRA fine-tune (fail-fast if empty)
+  → val_bpb
+  → if NEW BEST and lab_auto_promote → brain.promote_adapter
+  → results.tsv
 ```
 
 ### 6. Health + Self-Heal
 
 ```
-every health_interval:
-  check brain/memory/rag/wiki/disk/bus
-  publish haki.health
-
+every health_interval: check brain/memory/rag/wiki/disk/bus
 every self_heal_interval (or haki heal):
-  for degraded/unhealthy components:
-    low-risk recover (re-init; no heavy model downloads)
-  publish haki.self_heal
-  record kaizen if recoveries succeeded
+  low-risk recover (re-init; no surprise downloads)
 ```
 
 ### 7. Becoming
 
 ```
-every 5 minutes:
-  gather module stats
-  scan tensions (gap, stasis, novelty, contradiction)
-  generate questions
-  propose transformation
-  publish haki.becoming
+every ~5m: scan tensions → questions → propose transformation
+publish haki.becoming
 ```
 
 ## Storage Layout
@@ -130,66 +160,73 @@ every 5 minutes:
 ```
 ~/.haki/
 ├── memory.db (+ .faiss)
-├── wiki/                 # schema, index, log, entities, concepts, ...
+├── wiki/
+├── models/                      # HF cache for base model
 ├── lab/
+│   ├── active_model.json        # living brain pointer
 │   ├── data/training.jsonl
-│   ├── models/<exp_id>/adapter/
-│   └── results.tsv
-├── models/               # HF cache
-└── kaizen.jsonl          # continuous improvement log
+│   ├── models/<exp_id>/adapter/ # LoRA generations
+│   ├── results.tsv
+│   └── logs/
+└── kaizen.jsonl
 ```
 
 ## Configuration
 
-Via `HakiConfig` (`pydantic-settings`, `SettingsConfigDict`, env prefix `HAKI_`):
+`HakiConfig` — env prefix `HAKI_`:
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `DATA_DIR` | `~/.haki` | Root |
-| `NARROW_MODEL_ID` | TinyLlama 1.1B | Local model |
-| `LLM_API_KEY` | `""` | Wide API key |
-| `LLM_API_BASE` | OpenAI | Endpoint |
-| `LLM_MODEL` | `gpt-4o-mini` | Wide model |
-| `EMBEDDING_MODEL` | `all-MiniLM-L6-v2` | Embeddings |
-| `RAG_CHUNK_SIZE` | `512` | Words/chunk |
-| `RAG_TOP_K` | `5` | Retrieve count |
+| `BASE_MODEL_ID` | SmolLM2-360M-Instruct | Local base |
+| `NARROW_MODEL_ID` | same | Legacy alias |
+| `MODEL_CPU` | `true` | Prefer CPU |
+| `MODEL_MAX_NEW_TOKENS` | `128` | Generation length |
+| `MODEL_LOAD_IN_8BIT` | `false` | 8-bit if GPU |
+| `LAB_GPU` | `false` | CUDA for Lab |
+| `LAB_AUTO_PROMOTE` | `true` | Self-replace on best |
+| `LAB_MIN_TRAINING_PAIRS` | `3` | Gate before train |
 | `LAB_TIME_BUDGET` | `300` | Seconds |
-| `LAB_MIN_TRAINING_PAIRS` | `3` | Min pairs |
+| `EMBEDDING_MODEL` | all-MiniLM-L6-v2 | Embeddings |
 | `HEALTH_INTERVAL` | `30` | Seconds |
 | `SELF_HEAL_INTERVAL` | `300` | Seconds |
+
+**Removed (v0.2.0):** `LLM_API_KEY`, `LLM_API_BASE`, `LLM_MODEL`, dual-tier wide model.
 
 ## Bus Topics
 
 | Topic | Purpose |
 |-------|---------|
 | `haki.start` / `ready` / `stop` / `shutdown` | Lifecycle |
-| `haki.health` | Health report payload |
+| `haki.health` | Health payload |
 | `haki.becoming` | Tensions + proposals |
 | `haki.self_heal` | Recovery actions |
 
 ## Module Dependencies
 
 ```
-CLI → Brain, Memory, Wiki, RAG, Lab, Health, SelfHealer, Kaizen
-Daemon → HealthMonitor, Becoming, SelfHealer, MessageBus
-Lab → Memory (training pairs)
-RAG → Memory + FAISS docs
-Wiki → filesystem markdown
-Brain → optional local HF model + remote LLM API
+CLI → Brain, Lab, Memory, Wiki, RAG, Health, SelfHealer, Kaizen
+Lab → Memory (data) → Brain.promote_adapter (self-replace)
+Brain → base weights + optional LoRA from Lab
+Daemon → Health + Becoming + SelfHealer + Bus
 ```
 
-## Extending
+## Hardware notes
 
-1. Subclass `Organism` when possible  
-2. `async def initialize()` + `pulse()` on real work  
-3. Register health checks / self-heal recoverers  
-4. Add CLI + MCP tools  
-5. Document in `docs/modules/`  
-6. Record improvement with `haki kaizen add`  
+| Machine | Guidance |
+|---------|----------|
+| 4GB RAM | SmolLM2-360M, `MODEL_CPU=true`, small `MAX_NEW_TOKENS` |
+| 8GB+ | Same; more headroom for Lab |
+| GPU | `HAKI_LAB_GPU=true`, optional 8-bit |
 
-## Security Notes
+## What Haki is not
 
-- Daemon is localhost-oriented; no built-in multi-tenant auth  
-- Self-heal never auto-downloads large models  
-- API keys only via env / `.env`  
-- SQLite not encrypted at rest  
+- Not a replacement for Hermes daily agent workflows  
+- Not a cloud multi-model gateway  
+- Not full Karpathy `train.py` mutation Autoresearch (yet) — LoRA evolve + promote is the v0.2 path  
+
+## Related docs
+
+- [modules/brain.md](modules/brain.md)  
+- [modules/lab.md](modules/lab.md)  
+- [philosophy.md](philosophy.md)  
+- [quickstart.md](quickstart.md)  

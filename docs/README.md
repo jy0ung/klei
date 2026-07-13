@@ -1,37 +1,37 @@
 # Haki Documentation
 
-> Cognitive OS with brain, self-learning, self-healing, becoming, and Kaizen.
+> Local-only cognitive OS: tiny model + Lab self-evolution + memory/wiki/heal.
 
-**Current version:** 0.1.2
+**Current version:** 0.2.0
 
 ## Index
 
 | Document | Description |
 |----------|-------------|
-| [Quickstart](quickstart.md) | Install, init, first chat, heal, kaizen |
-| [Architecture](architecture.md) | System design, data flow, storage |
-| [Philosophy](philosophy.md) | Becoming architecture (living organisms) |
-| [Kaizen](kaizen.md) | Continuous improvement process |
-| [Deployment](deployment.md) | Production, Docker, systemd |
-| [API Reference](api.md) | Module/function reference |
-| [Contributing](contributing.md) | Dev setup, tests, Kaizen cycle |
+| [Quickstart](quickstart.md) | Install, local chat, evolve, heal |
+| [Architecture](architecture.md) | System design, self-evolution, storage |
+| [Philosophy](philosophy.md) | Becoming / organisms |
+| [Kaizen](kaizen.md) | Continuous improvement |
+| [Deployment](deployment.md) | Production notes |
+| [API Reference](api.md) | Public APIs |
+| [Contributing](contributing.md) | Dev + Kaizen cycle |
 | [CHANGELOG](CHANGELOG.md) | Version history |
 
 ## Module Docs
 
 | Module | File | Purpose |
 |--------|------|---------|
-| **Brain** | [modules/brain.md](modules/brain.md) | Dual-tier model orchestration |
-| **Memory** | [modules/memory.md](modules/memory.md) | Self-learning memory graph |
-| **Wiki** | [modules/wiki.md](modules/wiki.md) | LLM-maintained knowledge base |
-| **RAG** | [modules/rag.md](modules/rag.md) | Retrieval-augmented generation |
-| **Lab** | [modules/lab.md](modules/lab.md) | Autonomous model creation |
-| **Health** | [modules/health.md](modules/health.md) | Metabolic monitoring |
-| **Self-Heal** | [modules/self_heal.md](modules/self_heal.md) | Autonomous recovery cycle |
+| **Brain** | [modules/brain.md](modules/brain.md) | Local model + self-replacement |
+| **Lab** | [modules/lab.md](modules/lab.md) | Evolve / fine-tune / promote |
+| **Memory** | [modules/memory.md](modules/memory.md) | Self-learning graph |
+| **Wiki** | [modules/wiki.md](modules/wiki.md) | Compiled knowledge |
+| **RAG** | [modules/rag.md](modules/rag.md) | Retrieval |
+| **Health** | [modules/health.md](modules/health.md) | Monitoring |
+| **Self-Heal** | [modules/self_heal.md](modules/self_heal.md) | Recovery |
 | **Organism** | [modules/organism.md](modules/organism.md) | Living base class |
-| **Daemon** | [modules/daemon.md](modules/daemon.md) | Bus + becoming + self-heal |
-| **MCP** | [modules/mcp.md](modules/mcp.md) | MCP tool interfaces |
-| **CLI** | [modules/cli.md](modules/cli.md) | Command-line interface |
+| **Daemon** | [modules/daemon.md](modules/daemon.md) | Bus + loops |
+| **MCP** | [modules/mcp.md](modules/mcp.md) | MCP tools |
+| **CLI** | [modules/cli.md](modules/cli.md) | Commands |
 
 ## Quick Start
 
@@ -39,20 +39,25 @@
 pip install -e .
 haki init
 haki chat
+haki brain
+haki evolve -n 1
 haki health
-haki heal
-haki kaizen list
 ```
+
+No cloud API key required.
 
 ## Architecture Overview
 
 ```
-User → CLI/TUI → hakid daemon
-                    ├── Health monitor (30s)
-                    ├── Becoming loop (5m)
-                    └── Self-heal loop (5m)
-                           ↕ message bus
-         Brain ⇄ Memory ⇄ Wiki ⇄ RAG ⇄ Lab ⇄ Kaizen
+User → CLI
+        ↓
+ Local Brain (base ± LoRA gen N)
+        ↓
+ Memory / Wiki / RAG
+        ↓
+ Lab.evolve → better val_bpb? → promote → gen N+1
+        ↑
+ Health + Self-heal + Becoming (daemon)
 ```
 
-See [architecture.md](architecture.md) for full details.
+See [architecture.md](architecture.md).

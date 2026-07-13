@@ -102,40 +102,28 @@ Health checks are now **metabolic monitoring** — not just "is it up?" but "is 
 
 ```
 haki/
-├── organism.py      # Living base class (lifecycle, metabolism)
-├── philosophy.py    # Self-questioning protocol (tensions, questions, proposals)
+├── organism.py      # Living base class
+├── philosophy.py    # Tensions / questions / proposals
 ├── wiki.py          # Wiki(Organism)
 ├── kaizen.py        # Continuous improvement log
 ├── self_heal.py     # SelfHealer(Organism)
-├── brain/           # Brain(Organism)
+├── brain/           # Brain(Organism) — local-only + promote
 ├── memory/          # MemoryGraph(Organism)
-├── lab/             # Lab(Organism)
+├── lab/             # Lab(Organism) — evolve + auto-promote
 ├── health/          # HealthMonitor(Organism)
 ├── daemon/
-│   └── main.py      # HakiDaemon(Organism) — health + becoming + self-heal
-└── cli/
-    └── __init__.py  # status, become, kaizen, heal, ...
+│   └── main.py      # health + becoming + self-heal
+└── cli/             # chat, brain, evolve, heal, kaizen, ...
 ```
 
 ## Getting Started
 
 ```bash
-# Check vitality of all modules
 haki status
-
-# See what tensions the system has detected
+haki brain
 haki become status
-
-# Ask the system to generate a question from its current tensions
-haki become question
-
-# Propose a transformation based on tensions
-haki become propose
-
-# Self-heal once
+haki evolve -n 1
 haki heal
-
-# Run the daemon (becomes + heals actively)
 haki daemon
 ```
 
@@ -143,12 +131,13 @@ haki daemon
 
 | Command | Description |
 |---------|-------------|
-| `haki status` | Vitality of all modules (stage, ops, errors) |
-| `haki become status` | Current tensions and intensity |
-| `haki become question` | System-generated question from tensions |
-| `haki become propose` | Proposed transformation |
+| `haki status` | Vitality of modules |
+| `haki brain` | Local model card (gen, adapter) |
+| `haki evolve` | Self-evolution cycle(s) |
+| `haki become status` | Tensions |
+| `haki become question` | System question |
+| `haki become propose` | Transformation proposal |
 | `haki heal` | One self-healing cycle |
-| `haki wiki status` | Wiki statistics by page type |
 | `haki health` | Metabolic health report |
 | `haki kaizen list` | Continuous improvement log |
 

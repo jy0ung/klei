@@ -1,42 +1,80 @@
 # Brain Module
 
-The brain is Haki's dual-tier model orchestration layer (`Brain(Organism)`), inspired by CognitiveOS.
+Local-only living brain. **No cloud LLM API.**
+
+`Brain(Organism)` loads a tiny base model and optional Lab LoRA adapter, and can **replace itself** when Lab finds a better generation.
+
+## Default model
+
+| Setting | Value |
+|---------|--------|
+| Base | `HuggingFaceTB/SmolLM2-360M-Instruct` |
+| Target hardware | ~4GB-class machines |
+| Mode | `local-only` |
+
+Override: `HAKI_BASE_MODEL_ID`.
 
 ## Architecture
 
 ```
-Query → Brain.think()
-           │
-     ┌─────┴─────┐
-     │ simple?    │
-     └──┬─────┬──┘
-        │     │
-    NARROW   WIDE
-   (local)  (remote)
-        │     │
-     BrainResponse + pulse/error
+think(query)
+    │
+    ├─ weights loaded? ──yes──→ local generate (base ± LoRA)
+    │
+    └─ no ──→ rule-fallback (still offline)
 ```
 
-## Routing
+Promotion:
 
-Heuristic `_is_simple_query()`: short queries (≤10 words) with common keywords route to **narrow**; otherwise **wide**. Override with `force_tier`.
+```
+Lab NEW BEST
+  → brain.promote_adapter(path, val_bpb)
+  → write active_model.json
+  → reload()
+  → generation N+1
+```
 
-## Models
+## Registry
 
-- **Narrow:** `HAKI_NARROW_MODEL_ID` (default TinyLlama 1.1B) — optional  
-- **Wide:** OpenAI-compatible API via `HAKI_LLM_API_KEY` / `HAKI_LLM_MODEL`  
+`~/.haki/lab/active_model.json` points at the living adapter.
 
-## Usage
+## API
 
 ```python
-from haki.brain import brain, TierChoice
+from haki.brain import brain
 
 await brain.initialize()
-result = await brain.think("What's the weather?")
-print(result.tier, result.text, brain.get_vitality())
+card = brain.model_card()
+# { base_model, adapter_path, generation, val_bpb, loaded, mode: "local-only" }
+
+result = await brain.think("Who are you?")
+print(result.text, result.generation, result.model)
+
+# After Lab trains a better adapter:
+await brain.promote_adapter(
+    adapter_path="~/.haki/lab/models/abc/adapter",
+    val_bpb=0.95,
+    description="experiment X",
+)
 ```
+
+## CLI
+
+```bash
+haki brain
+haki chat
+haki chat -m "Hello"
+```
+
+Chat slash: `/brain`, `/evolve`.
+
+## Health
+
+- **Healthy** if local weights loaded  
+- **Degraded** if fallback mode (weights missing / load error)  
+- Never requires API key  
 
 ## Related
 
-- [organism.md](organism.md)  
-- [api.md](../api.md)  
+- [lab.md](lab.md) — evolve + promote  
+- [architecture.md](../architecture.md)  
