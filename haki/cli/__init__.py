@@ -17,7 +17,7 @@ from rich.table import Table
 from rich.markdown import Markdown
 
 from haki.config import config
-from haki.brain import brain, TierChoice
+from haki.brain import brain
 from haki.memory import memory, MemoryNode
 from haki.rag import rag as rag_mod
 from haki.health import monitor
@@ -66,9 +66,8 @@ def daemon():
 
 @cli.command()
 @click.option("--message", "-m", help="Single message to send (interactive mode if omitted)")
-@click.option("--tier", type=click.Choice(["narrow", "wide"]), default=None, help="Force model tier")
-def chat(message: str | None, tier: str | None):
-    """Chat with Haki's brain."""
+def chat(message: str | None):
+    """Chat with Haki's local brain (no cloud API)."""
 
     async def _chat():
         await brain.initialize()
@@ -76,25 +75,20 @@ def chat(message: str | None, tier: str | None):
         await rag_mod.initialize()
 
         if message:
-            tier_choice = None
-            if tier == "narrow":
-                tier_choice = TierChoice.NARROW
-            elif tier == "wide":
-                tier_choice = TierChoice.WIDE
-
-            with console.status("[bold cyan]Thinking...[/bold cyan]"):
-                result = await brain.think(message, force_tier=tier_choice)
+            with console.status("[bold cyan]Thinking (local)...[/bold cyan]"):
+                result = await brain.think(message)
                 await memory.learn_from_interaction(message, result.text)
 
+            card = brain.model_card()
             console.print(Panel(
                 Markdown(result.text),
-                title=f"🧠 Haki ({result.tier.value}, {result.latency_ms:.0f}ms)",
+                title=f"🧠 Haki local gen={card['generation']} ({result.latency_ms:.0f}ms)",
                 border_style="cyan",
             ))
         else:
             console.print(Panel(
-                "[bold]Haki Chat[/bold] — type 'quit' or 'exit' to stop.\n"
-                "Commands: /health, /memory, /search <query>, /remember <text>",
+                "[bold]Haki Chat[/bold] — local-only brain. Type 'quit' to stop.\n"
+                "Commands: /health, /memory, /search, /remember, /brain, /evolve",
                 border_style="cyan",
             ))
             while True:
@@ -111,6 +105,14 @@ def chat(message: str | None, tier: str | None):
                     report = await monitor.check_all()
                     _print_health(report)
                     continue
+                elif user_input == "/brain":
+                    console.print(brain.model_card())
+                    continue
+                elif user_input == "/evolve":
+                    with console.status("[magenta]Evolving...[/magenta]"):
+                        r = await lab_mod.evolve_once()
+                    console.print(f"Evolve: {r.status} {r.description_text} val_bpb={r.val_bpb}")
+                    continue
                 elif user_input == "/memory":
                     nodes = await memory.get_all()
                     for n in nodes[-10:]:
@@ -126,19 +128,18 @@ def chat(message: str | None, tier: str | None):
                     text = user_input[10:]
                     from haki.memory import MemoryNode
                     import uuid
-                    from datetime import datetime
                     node = MemoryNode(id=str(uuid.uuid4()), content=text, role="insight")
                     await memory.store_memory(node)
                     console.print("[green]Stored.[/green]")
                     continue
 
-                with console.status("[bold cyan]Thinking...[/bold cyan]"):
+                with console.status("[bold cyan]Thinking (local)...[/bold cyan]"):
                     result = await brain.think(user_input)
                     await memory.learn_from_interaction(user_input, result.text)
 
                 console.print(Panel(
                     Markdown(result.text),
-                    title=f"Haki ({result.tier.value})",
+                    title=f"Haki local gen={result.generation}",
                     border_style="cyan",
                 ))
 
@@ -269,10 +270,58 @@ def status():
         table.add_row("Lab", vit["stage"], str(vit["operations"]), str(int(vit["error_rate"] * vit["operations"])))
 
         console.print(table)
-        console.print(f"\n[bold]Config:[/bold] narrow={config.narrow_model_id}, wide={config.llm_model}")
+        card = brain.model_card()
+        console.print(
+            f"\n[bold]Local brain:[/bold] {card['base_model']} gen={card['generation']} "
+            f"loaded={card['loaded']} adapter={card['adapter_path']}"
+        )
         console.print(f"[bold]Data:[/bold] {config.data_dir}")
 
     asyncio.run(_status())
+
+
+@cli.command("evolve")
+@click.option("--epochs", "-e", default=1, type=int)
+@click.option("--loops", "-n", default=1, type=int, help="Number of self-evolution cycles")
+def evolve(epochs: int, loops: int):
+    """Self-evolve: Lab trains on memory and replaces the brain if improved."""
+
+    async def _evolve():
+        await memory.initialize()
+        await lab_mod.initialize()
+        console.print(Panel(
+            "[bold]Self-evolution[/bold]\n"
+            "Local tiny model trains on interactions → promotes better LoRA into the brain.\n"
+            "No cloud API.",
+            border_style="magenta",
+        ))
+        for i in range(loops):
+            with console.status(f"[magenta]Evolution cycle {i+1}/{loops}...[/magenta]"):
+                result = await lab_mod.evolve_once(epochs=epochs)
+            color = "green" if result.status == "success" else "red"
+            console.print(
+                f"[{color}]cycle {i+1}: {result.status}[/{color}] "
+                f"val_bpb={result.val_bpb} · {result.description_text}"
+            )
+        console.print(brain.model_card())
+
+    asyncio.run(_evolve())
+
+
+@cli.command("brain")
+def brain_cmd():
+    """Show local brain model card (generation, adapter, load state)."""
+
+    async def _brain():
+        await brain.initialize()
+        card = brain.model_card()
+        console.print(Panel(
+            "\n".join(f"[bold]{k}:[/bold] {v}" for k, v in card.items()),
+            title="🧠 Local Brain",
+            border_style="cyan",
+        ))
+
+    asyncio.run(_brain())
 
 
 @cli.group()

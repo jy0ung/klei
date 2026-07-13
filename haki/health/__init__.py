@@ -173,11 +173,20 @@ class HealthMonitor(Organism):
 
     async def _check_brain(self) -> HealthCheck:
         from haki.brain import brain
-        if brain.narrow_loaded or brain.wide_configured:
-            return HealthCheck(name="brain", status=ComponentStatus.HEALTHY,
-                             message=f"Narrow={brain.narrow_loaded}, Wide={brain.wide_configured}")
-        return HealthCheck(name="brain", status=ComponentStatus.DEGRADED,
-                         message="No model available")
+        card = brain.model_card()
+        if brain.local_loaded:
+            return HealthCheck(
+                name="brain",
+                status=ComponentStatus.HEALTHY,
+                message=f"local gen={card['generation']} base={card['base_model']}",
+            )
+        if brain._initialized:
+            return HealthCheck(
+                name="brain",
+                status=ComponentStatus.DEGRADED,
+                message=f"fallback mode: {card.get('load_error') or 'weights not loaded'}",
+            )
+        return HealthCheck(name="brain", status=ComponentStatus.DEGRADED, message="not initialized")
 
     async def _check_memory(self) -> HealthCheck:
         from haki.memory import memory

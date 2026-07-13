@@ -60,16 +60,15 @@ async def test_memory_interaction_logging(tmp_haki_dir):
 
 @pytest.mark.asyncio
 async def test_brain_routing():
-    """Test brain tier routing logic."""
-    from haki.brain import Brain, TierChoice
+    """Local-only brain constructs and answers in fallback mode."""
+    from haki.brain import Brain
 
     b = Brain()
-    # Simple query should route to narrow
-    assert b._is_simple_query("What time is it?")
-    assert b._is_simple_query("Hello")
-    # Complex query should route to wide
-    assert not b._is_simple_query("Explain quantum computing in detail with mathematical proofs")
-
+    b._initialized = True
+    b._model = None
+    r = await b.think("Hello")
+    assert r.text
+    assert r.tier.value == "local"
 
 @pytest.mark.asyncio
 async def test_health_monitor(tmp_haki_dir):

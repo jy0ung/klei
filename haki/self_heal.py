@@ -119,14 +119,12 @@ class SelfHealer(Organism):
                 from haki.brain import brain
                 # Low-risk only: do not download large models during auto-heal
                 if not brain._initialized:
-                    brain._initialized = True  # mark ready for wide-API-only mode
-                ok = brain.wide_configured or brain.narrow_loaded
+                    brain._initialized = True  # fallback-capable
+                ok = True  # fallback rules always available offline
                 detail = (
-                    f"narrow={brain.narrow_loaded} wide={brain.wide_configured}; "
-                    "skipped heavy model download in auto-heal"
+                    f"loaded={brain.local_loaded} gen={brain.model_card()['generation']}; "
+                    "local-only mode (no cloud API)"
                 )
-                if not ok:
-                    detail += " — configure HAKI_LLM_API_KEY or load narrow model manually"
             elif component == "disk":
                 # Cannot invent free space — escalate
                 ok = False

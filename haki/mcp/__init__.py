@@ -31,12 +31,11 @@ class MCPBridge:
     TOOLS = [
         {
             "name": "haki_chat",
-            "description": "Send a message to Haki and get a response from the cognitive OS brain.",
+            "description": "Send a message to Haki's local brain (no cloud API).",
             "inputSchema": {
                 "type": "object",
                 "properties": {
                     "message": {"type": "string", "description": "The user's message or query."},
-                    "force_tier": {"type": "string", "enum": ["narrow", "wide"], "description": "Force a specific model tier."},
                 },
                 "required": ["message"],
             },
@@ -140,7 +139,7 @@ class MCPBridge:
 
     async def call_tool(self, name: str, arguments: dict[str, Any]) -> list[dict]:
         """Execute an MCP tool call."""
-        from haki.brain import brain, TierChoice
+        from haki.brain import brain
         from haki.memory import memory, MemoryNode
         from haki.rag import rag
         from haki.health import monitor
@@ -151,12 +150,7 @@ class MCPBridge:
 
         try:
             if name == "haki_chat":
-                tier = None
-                if arguments.get("force_tier") == "narrow":
-                    tier = TierChoice.NARROW
-                elif arguments.get("force_tier") == "wide":
-                    tier = TierChoice.WIDE
-                result = await brain.think(arguments["message"], force_tier=tier)
+                result = await brain.think(arguments["message"])
                 # Also store + learn
                 await memory.learn_from_interaction(arguments["message"], result.text)
                 return [{"type": "text", "text": result.text}]

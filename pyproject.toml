@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "haki"
-version = "0.1.2"
+version = "0.2.0"
 description = "Cognitive OS with brain, self-learning, self-healing, and autonomous model creation"
 readme = "README.md"
 license = {text = "MIT"}

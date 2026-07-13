@@ -202,12 +202,13 @@ class Lab(Organism):
             await self._save_results()
             return result
 
-        model_id = model_id or config.narrow_model_id
+        model_id = model_id or config.base_model_id or config.narrow_model_id
         output_dir = self._lab_dir / "models" / exp_id
         output_dir.mkdir(parents=True, exist_ok=True)
 
         try:
             start = time.perf_counter()
+            use_cuda = config.lab_gpu and torch.cuda.is_available()
 
             # Load model
             tokenizer = AutoTokenizer.from_pretrained(model_id, cache_dir=config.models_dir)
@@ -216,12 +217,13 @@ class Lab(Organism):
 
             model = AutoModelForCausalLM.from_pretrained(
                 model_id,
-                torch_dtype=torch.float16 if torch.cuda.is_available() else torch.float32,
-                device_map="auto" if torch.cuda.is_available() else "cpu",
+                torch_dtype=torch.float16 if use_cuda else torch.float32,
+                device_map="auto" if use_cuda else "cpu",
                 cache_dir=config.models_dir,
+                low_cpu_mem_usage=True,
             )
 
-            # Apply LoRA
+            # Apply LoRA (target modules common to Llama/Qwen/Smol families)
             lora_config = LoraConfig(
                 task_type=TaskType.CAUSAL_LM,
                 r=8,
@@ -237,19 +239,21 @@ class Lab(Organism):
             def tokenize_fn(examples):
                 prompts = [f"### Instruction:\n{inst}\n\n### Response:\n{resp}"
                           for inst, resp in zip(examples["instruction"], examples["response"])]
-                return tokenizer(prompts, truncation=True, max_length=512, padding="max_length")
+                return tokenizer(prompts, truncation=True, max_length=256, padding="max_length")
 
             tokenized = dataset.map(tokenize_fn, batched=True)
 
             training_args = TrainingArguments(
                 output_dir=str(output_dir),
                 num_train_epochs=epochs,
-                per_device_train_batch_size=2,
+                per_device_train_batch_size=1,
+                gradient_accumulation_steps=4,
                 logging_steps=10,
                 save_steps=50,
                 save_total_limit=1,
-                fp16=torch.cuda.is_available(),
+                fp16=use_cuda,
                 max_steps=int(time_budget_seconds / 10) if time_budget_seconds else -1,
+                report_to=[],
             )
 
             trainer = Trainer(
@@ -267,68 +271,104 @@ class Lab(Organism):
             result.status = "success"
 
             # Calculate val_bpb approximation
-            if result.val_loss:
+            if result.val_loss is not None:
                 import math
                 result.val_bpb = result.val_loss / math.log(2)
 
             # Save LoRA adapter
-            model.save_pretrained(str(output_dir / "adapter"))
-            tokenizer.save_pretrained(str(output_dir / "adapter"))
+            adapter_dir = output_dir / "adapter"
+            model.save_pretrained(str(adapter_dir))
+            tokenizer.save_pretrained(str(adapter_dir))
 
-            # Track best
-            if result.val_bpb and (self._best_val_bpb is None or result.val_bpb < self._best_val_bpb):
+            # Track best + self-replace brain
+            if result.val_bpb is not None and (
+                self._best_val_bpb is None or result.val_bpb < self._best_val_bpb
+            ):
                 self._best_val_bpb = result.val_bpb
-                self._best_model_path = output_dir / "adapter"
+                self._best_model_path = adapter_dir
                 result.description_text = "NEW BEST"
+                self.adapt("new best model", {"val_bpb": result.val_bpb, "path": str(adapter_dir)})
+                if config.lab_auto_promote:
+                    promote = await self.promote_to_brain(
+                        adapter_dir,
+                        val_bpb=result.val_bpb,
+                        base_model=model_id,
+                        description=result.description,
+                    )
+                    result.description_text = f"NEW BEST + PROMOTED gen={promote.get('generation')}"
             else:
-                result.description_text = "experiment completed"
+                result.description_text = "experiment completed (not better)"
 
             # Log VRAM
-            if torch.cuda.is_available():
+            if use_cuda:
                 result.peak_vram_mb = torch.cuda.max_memory_allocated() / 1024 / 1024
+
+            self.pulse("fine_tune", output_bytes=int(result.training_seconds * 1000))
 
         except Exception as e:
             logger.error("Fine-tune experiment %s failed: %s", exp_id, e)
             result.status = "failed"
             result.description_text = str(e)
+            self.error()
 
         self._results.append(result)
         await self._save_results()
         return result
 
-    async def run_autoresearch_loop(self, max_experiments: int = 100) -> None:
-        """
-        Autoresearch-style experiment loop.
-        Generates ideas → modifies code → runs experiment → evaluates → repeats.
-        """
-        self._running = True
-        logger.info("Autoresearch loop started (max=%d experiments).", max_experiments)
+    async def promote_to_brain(
+        self,
+        adapter_path: Path,
+        val_bpb: float | None = None,
+        base_model: str | None = None,
+        description: str = "",
+    ) -> dict:
+        """Replace the living brain with this adapter (self-evolution)."""
+        from haki.brain import brain
+        return await brain.promote_adapter(
+            adapter_path=adapter_path,
+            val_bpb=val_bpb,
+            base_model=base_model or config.base_model_id,
+            description=description,
+        )
 
+    async def evolve_once(self, epochs: int = 1) -> ExperimentResult:
+        """
+        One self-evolution cycle: train on memory → maybe replace active brain.
+        This is the Autoresearch-style 'use myself to improve myself' step.
+        """
+        await self.initialize()
+        idea = self._generate_idea(len(self._results))
+        result = await self.fine_tune_model(
+            model_id=config.base_model_id,
+            epochs=epochs,
+            time_budget_seconds=config.lab_time_budget_seconds,
+            allow_seed=True,
+        )
+        result.description = idea
+        self.pulse("evolve_once")
+        return result
+
+    async def evolve_loop(self, max_experiments: int = 10) -> list[ExperimentResult]:
+        """Run multiple self-evolution cycles; each may replace the brain."""
+        import asyncio
+        self._running = True
+        out: list[ExperimentResult] = []
         for i in range(max_experiments):
             if not self._running:
                 break
-
-            logger.info("Experiment %d/%d", i + 1, max_experiments)
-
-            # Generate experimental idea (could be LLM-driven)
-            idea = self._generate_idea(i)
-            logger.info("Idea: %s", idea)
-
-            # Run experiment
-            result = await self.fine_tune_model(epochs=1)
-            result.description = idea
-
-            # Log result
-            if result.status == "success":
-                logger.info("Experiment %s: val_bpb=%.4f", result.id, result.val_bpb or 0)
-            else:
-                logger.warning("Experiment %s failed: %s", result.id, result.description_text)
-
-            # Brief pause between experiments
-            await asyncio.sleep(1)
-
+            logger.info("Self-evolution %d/%d", i + 1, max_experiments)
+            result = await self.evolve_once(epochs=1)
+            out.append(result)
+            await asyncio.sleep(0.5)
         self._running = False
-        logger.info("Autoresearch loop completed.")
+        return out
+
+    async def run_autoresearch_loop(self, max_experiments: int = 100) -> None:
+        """
+        Autoresearch-style experiment loop.
+        Generates ideas → train → evaluate → promote if better → repeat.
+        """
+        await self.evolve_loop(max_experiments=max_experiments)
 
     def _generate_idea(self, index: int) -> str:
         """Generate an experimental idea (placeholder for LLM-based generation)."""
