@@ -45,6 +45,7 @@ class HakiDaemon(Organism):
         bus.subscribe("haki.shutdown", self._on_shutdown)
         bus.subscribe("haki.self_heal", self._on_self_heal)
         bus.subscribe("haki.becoming", self._on_becoming)
+        bus.subscribe("haki.evolve.request", self._on_evolve_request)
 
         # Start health monitor
         self._tasks.append(asyncio.create_task(self.monitor.run()))
@@ -55,11 +56,68 @@ class HakiDaemon(Organism):
         # Start self-healing cycle
         self._tasks.append(asyncio.create_task(self._self_heal_loop()))
 
+        # Start background evolve worker
+        self._tasks.append(asyncio.create_task(self._evolve_worker()))
+
         await bus.publish(Event(topic="haki.ready", payload={}, source="daemon"))
         logger.info("Haki daemon ready.")
 
         # Wait for shutdown
         await self._shutdown.wait()
+
+    async def _on_evolve_request(self, event: Event) -> None:
+        """CLI `haki evolve` can queue evolve via bus."""
+        payload = event.payload or {}
+        epochs = int(payload.get("epochs", 1))
+        loops = int(payload.get("loops", 1))
+        logger.info("Evolve requested: epochs=%d loops=%d", epochs, loops)
+        # Set evolve intent so worker picks it up
+        self._evolve_epochs = epochs
+        self._evolve_loops = loops
+        self._evolve_requested = True
+
+    async def _evolve_worker(self) -> None:
+        """Background evolve: one cycle at a time, checkpoint after each."""
+        self._evolve_requested = False
+        self._evolve_epochs = 1
+        self._evolve_loops = 0
+
+        from haki.memory import memory
+        from haki.lab import lab as lab_mod
+
+        while not self._shutdown.is_set():
+            if self._evolve_requested and self._evolve_loops > 0:
+                await memory.initialize()
+                await lab_mod.initialize()
+                for i in range(self._evolve_loops):
+                    if self._shutdown.is_set():
+                        break
+                    logger.info("Background evolve cycle %d/%d", i + 1, self._evolve_loops)
+                    self.pulse("evolve_cycle")
+                    try:
+                        result = await lab_mod.evolve_once(epochs=self._evolve_epochs)
+                        self._last_meaningful_change = time.perf_counter()
+                        await bus.publish(Event(
+                            topic="haki.evolve.result",
+                            payload={
+                                "cycle": i + 1,
+                                "status": result.status,
+                                "val_bpb": result.val_bpb,
+                                "description": result.description_text,
+                            },
+                            source="daemon",
+                        ))
+                        logger.info(
+                            "Evolve %d/%d: %s val_bpb=%s %s",
+                            i + 1, self._evolve_loops,
+                            result.status, result.val_bpb, result.description_text,
+                        )
+                    except Exception as exc:
+                        logger.exception("Background evolve failed: %s", exc)
+                        self.error()
+                self._evolve_requested = False
+                self._evolve_loops = 0
+            await asyncio.sleep(1)  # check for requests every second
 
     async def _self_heal_loop(self) -> None:
         """Periodic autonomous recovery cycle."""

@@ -102,7 +102,9 @@ class Brain(Organism):
     def _write_registry(self, data: dict) -> None:
         path = config.active_model_registry
         path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(json.dumps(data, indent=2), encoding="utf-8")
+        tmp = path.with_suffix(".tmp")
+        tmp.write_text(json.dumps(data, indent=2), encoding="utf-8")
+        tmp.replace(path)  # atomic rename — no partial writes
 
     async def _load_model(self, base_id: str, adapter_path: Path | None) -> None:
         import torch
@@ -144,11 +146,30 @@ class Brain(Organism):
         self._adapter_path = adapter_path if adapter_path and Path(adapter_path).exists() else None
 
     async def reload(self) -> bool:
-        """Hot-reload from active_model.json after Lab promotion."""
-        self._initialized = False
-        self._model = None
-        self._tokenizer = None
-        await self.initialize()
+        """Hot-reload LoRA only — keeps base model in RAM (no re-download)."""
+        if self._model is None or self._tokenizer is None:
+            # No base loaded yet — full init
+            self._initialized = False
+            self._model = None
+            self._tokenizer = None
+            await self.initialize()
+        elif self._adapter_path and Path(self._adapter_path).exists():
+            # Base already in RAM — just swap LoRA
+            try:
+                from peft import PeftModel
+                import torch
+                self._model = PeftModel.from_pretrained(
+                    self._model, str(self._adapter_path),
+                )
+                self._model.eval()
+                logger.info("Hot-swapped LoRA adapter gen=%s", self._generation)
+            except Exception as e:
+                logger.warning("LoRA hot-swap failed (%s); using base", e)
+                try:
+                    self._model = self._model.base_model
+                    self._model.eval()
+                except Exception:
+                    pass
         ok = self._model is not None
         if ok:
             self.adapt("reloaded active model", {

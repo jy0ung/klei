@@ -59,10 +59,12 @@ git pull             # get latest
 
 | Command | Purpose |
 |---------|---------|
-| `haki evolve` | One fine-tune + promote-if-best |
-| `haki evolve -n 3 -e 1` | 3 cycles, 1 epoch each |
-| `haki lab --epochs 1` | Explicit lab fine-tune |
-| `haki mastery` | Topics, confidence, open questions |
+haki evolve             # foreground (blocks terminal)
+haki daemon &           # start daemon with background evolve worker
+haki evolve -n 3        # queues 3 cycles on daemon (non-blocking)
+# check results after background run:
+cat ~/.haki/lab/results.tsv
+haki brain               # generation + adapter after promote
 
 ## Kaizen & becoming
 

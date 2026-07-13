@@ -419,11 +419,13 @@ class Lab(Organism):
         return ideas[index % len(ideas)]
 
     async def _save_results(self) -> None:
-        """Persist experiment results to TSV."""
+        """Persist experiment results to TSV (append-safe: checkpoint each cycle)."""
         results_path = self._lab_dir / "results.tsv"
-        with open(results_path, "w") as f:
-            f.write("id\tval_bpb\tstatus\tdescription\ttraining_seconds\n")
-            for r in self._results:
+        existed = results_path.exists()
+        with open(results_path, "a", encoding="utf-8") as f:
+            if not existed:
+                f.write("id\tval_bpb\tstatus\tdescription\ttraining_seconds\n")
+            for r in self._results[-1:]:  # append latest only (previous already on disk)
                 f.write(f"{r.id}\t{r.val_bpb or ''}\t{r.status}\t{r.description}\t{r.training_seconds:.1f}\n")
 
     def get_results(self) -> list[ExperimentResult]:
