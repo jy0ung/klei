@@ -8,7 +8,9 @@ import asyncio
 import logging
 import signal
 import sys
+import time
 from contextlib import asynccontextmanager
+from datetime import datetime
 
 from haki.config import config
 from haki.daemon.bus import bus, Event
@@ -33,12 +35,16 @@ class HakiDaemon(Organism):
         self._tasks: list[asyncio.Task] = []
         self._shutdown = asyncio.Event()
         self._becoming_interval = 300  # Run becoming process every 5 minutes
+        self._self_heal_interval = config.self_heal_interval_seconds
         self._tensions: list[Tension] = []
+        self._last_meaningful_change = time.perf_counter()
 
     async def start(self) -> None:
         logger.info("Starting Haki daemon...")
         await bus.publish(Event(topic="haki.start", payload={}, source="daemon"))
         bus.subscribe("haki.shutdown", self._on_shutdown)
+        bus.subscribe("haki.self_heal", self._on_self_heal)
+        bus.subscribe("haki.becoming", self._on_becoming)
 
         # Start health monitor
         self._tasks.append(asyncio.create_task(self.monitor.run()))
@@ -46,11 +52,35 @@ class HakiDaemon(Organism):
         # Start the becoming process
         self._tasks.append(asyncio.create_task(self._becoming_loop()))
 
+        # Start self-healing cycle
+        self._tasks.append(asyncio.create_task(self._self_heal_loop()))
+
         await bus.publish(Event(topic="haki.ready", payload={}, source="daemon"))
         logger.info("Haki daemon ready.")
 
         # Wait for shutdown
         await self._shutdown.wait()
+
+    async def _self_heal_loop(self) -> None:
+        """Periodic autonomous recovery cycle."""
+        from haki.self_heal import self_healer
+        logger.info("Self-heal process started (interval=%ds).", self._self_heal_interval)
+        while not self._shutdown.is_set():
+            try:
+                await self_healer.cycle()
+            except Exception:
+                logger.exception("Self-heal cycle error")
+            await asyncio.sleep(self._self_heal_interval)
+
+    async def _on_self_heal(self, event: Event) -> None:
+        payload = event.payload or {}
+        if payload.get("recovered"):
+            self._last_meaningful_change = time.perf_counter()
+            self.pulse("self_heal_event")
+
+    async def _on_becoming(self, event: Event) -> None:
+        self._last_meaningful_change = time.perf_counter()
+        self.pulse("becoming_event")
 
     async def _becoming_loop(self) -> None:
         """
@@ -168,7 +198,7 @@ class HakiDaemon(Organism):
         report = self.monitor.get_report()
         context["health_stats"] = {
             "uptime_seconds": report.uptime_seconds,
-            "last_meaningful_change_seconds_ago": 0,  # TODO: track
+            "last_meaningful_change_seconds_ago": time.perf_counter() - self._last_meaningful_change,
         }
 
         return context
@@ -187,8 +217,9 @@ async def run_daemon() -> None:
     daemon = HakiDaemon()
     loop = asyncio.get_event_loop()
     for sig in (signal.SIGINT, signal.SIGTERM):
-        loop.add_signal_handler(sig, lambda: asyncio.create_task(daemon.stop()))
+        try:
+            loop.add_signal_handler(sig, lambda: asyncio.create_task(daemon.stop()))
+        except NotImplementedError:
+            # Windows often lacks add_signal_handler
+            pass
     await daemon.start()
-
-
-from datetime import datetime

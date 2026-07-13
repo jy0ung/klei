@@ -15,6 +15,7 @@ from typing import Any, Callable
 
 from haki.config import config
 from haki.daemon.bus import bus, Event
+from haki.organism import Organism
 
 logger = logging.getLogger(__name__)
 
@@ -60,7 +61,7 @@ class SystemHealth:
         }
 
 
-class HealthMonitor:
+class HealthMonitor(Organism):
     """
     Monitors all Haki subsystems and auto-recovers from failures.
 
@@ -74,6 +75,7 @@ class HealthMonitor:
     """
 
     def __init__(self):
+        super().__init__("Health")
         self._checks: dict[str, Callable] = {}
         self._results: dict[str, HealthCheck] = {}
         self._start_time = time.perf_counter()
@@ -229,21 +231,41 @@ class HealthMonitor:
     async def attempt_recovery(self, component: str) -> bool:
         """Attempt to recover a failed component."""
         logger.info("Attempting recovery of %s...", component)
-        # Implementation per component
-        if component == "memory":
-            try:
+        try:
+            if component == "memory":
                 from haki.memory import memory
+                memory._initialized = False
                 await memory.initialize()
+                self.pulse("recover_memory")
                 return True
-            except Exception:
-                return False
-        elif component == "rag":
-            try:
+            elif component == "rag":
                 from haki.rag import rag
                 await rag.initialize()
+                self.pulse("recover_rag")
                 return True
-            except Exception:
-                return False
+            elif component == "wiki":
+                from haki.wiki import wiki
+                wiki._initialized = False
+                await wiki.initialize()
+                self.pulse("recover_wiki")
+                return True
+            elif component == "brain":
+                from haki.brain import brain
+                # Low-risk: don't trigger large downloads in health recovery
+                ok = brain.wide_configured or brain.narrow_loaded
+                if not brain._initialized:
+                    brain._initialized = True
+                self.pulse("recover_brain")
+                return ok
+            elif component == "lab":
+                from haki.lab import lab
+                await lab.initialize()
+                self.pulse("recover_lab")
+                return True
+        except Exception as e:
+            logger.exception("Recovery failed for %s: %s", component, e)
+            self.error()
+            return False
         return False
 
     def stop(self) -> None:

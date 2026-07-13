@@ -80,30 +80,79 @@ class Lab(Organism):
         self.pulse("initialized")
         logger.info("Lab initialized at %s", self._lab_dir)
 
-    async def create_training_data_from_memory(self) -> Path:
+    async def create_training_data_from_memory(self, allow_seed: bool = True) -> Path:
         """
         Generate synthetic fine-tuning data from memory graph interactions.
-        Creates instruction-response pairs.
+        Creates instruction-response pairs. Optionally seeds baseline pairs
+        when history is thin.
         """
         from haki.memory import memory
         interactions = await memory.get_recent_interactions(n=1000)
 
         data_path = self._lab_dir / "data" / "training.jsonl"
-        with open(data_path, "w") as f:
+        data_path.parent.mkdir(parents=True, exist_ok=True)
+        count = 0
+        with open(data_path, "w", encoding="utf-8") as f:
             for ix in interactions:
-                if ix["user_input"] and ix["assistant_output"]:
+                if ix.get("user_input") and ix.get("assistant_output"):
                     entry = {
                         "instruction": ix["user_input"],
                         "response": ix["assistant_output"],
                         "source": "interaction",
                     }
                     f.write(json.dumps(entry) + "\n")
+                    count += 1
 
-        logger.info("Generated %d training pairs from interactions.", len(interactions))
+            # Seed minimal domain pairs if under threshold
+            if allow_seed and count < config.lab_min_training_pairs:
+                for pair in self._seed_training_pairs():
+                    f.write(json.dumps(pair) + "\n")
+                    count += 1
+
+        self.pulse("create_training_data", output_bytes=data_path.stat().st_size if data_path.exists() else 0)
+        logger.info("Generated %d training pairs (seed=%s).", count, allow_seed)
         return data_path
 
+    def _seed_training_pairs(self) -> list[dict[str, str]]:
+        """Baseline instruction pairs so Lab can operate before real history exists."""
+        return [
+            {
+                "instruction": "What is Haki?",
+                "response": "Haki is a cognitive OS with brain, memory, wiki, self-healing, and model lab.",
+                "source": "seed",
+            },
+            {
+                "instruction": "How do I check system health?",
+                "response": "Run `haki health` or ask the brain for status; health monitors brain, memory, rag, wiki, disk, bus.",
+                "source": "seed",
+            },
+            {
+                "instruction": "Explain the becoming philosophy.",
+                "response": "To exist is to be in motion — Haki treats modules as living organisms that adapt, not static components.",
+                "source": "seed",
+            },
+            {
+                "instruction": "How does Kaizen apply to Haki?",
+                "response": "Record small continuous improvements with `haki kaizen add`, fix root causes, measure, and compound.",
+                "source": "seed",
+            },
+            {
+                "instruction": "What should I do before fine-tuning?",
+                "response": "Chat to accumulate interactions, or use seed pairs; then run `haki lab` with enough training pairs.",
+                "source": "seed",
+            },
+        ]
+
+    def training_pair_count(self, data_path: Path | None = None) -> int:
+        path = data_path or (self._lab_dir / "data" / "training.jsonl")
+        if not path.exists() or path.stat().st_size == 0:
+            return 0
+        with open(path, encoding="utf-8") as f:
+            return sum(1 for line in f if line.strip())
+
     async def fine_tune_model(self, model_id: str | None = None, epochs: int = 1,
-                               time_budget_seconds: int | None = None) -> ExperimentResult:
+                               time_budget_seconds: int | None = None,
+                               allow_seed: bool = True) -> ExperimentResult:
         """
         Fine-tune a small model on collected interaction data.
         Uses PEFT/LoRA for efficient training.
@@ -116,10 +165,22 @@ class Lab(Organism):
         )
 
         # Kaizen: fail fast before heavy imports if no training data
-        data_path = await self.create_training_data_from_memory()
-        if not data_path.exists() or data_path.stat().st_size == 0:
+        data_path = await self.create_training_data_from_memory(allow_seed=allow_seed)
+        pair_count = self.training_pair_count(data_path)
+        if pair_count == 0:
             result.status = "failed"
             result.description_text = "No training data available — interact more first"
+            self.error()
+            self._results.append(result)
+            await self._save_results()
+            return result
+
+        if pair_count < config.lab_min_training_pairs:
+            result.status = "failed"
+            result.description_text = (
+                f"Need at least {config.lab_min_training_pairs} training pairs "
+                f"(have {pair_count})"
+            )
             self.error()
             self._results.append(result)
             await self._save_results()

@@ -531,6 +531,32 @@ def wiki_status():
     asyncio.run(_status())
 
 
+@cli.command("heal")
+def heal():
+    """Run one autonomous self-healing cycle."""
+
+    async def _heal():
+        from haki.self_heal import self_healer
+        await memory.initialize()
+        await rag_mod.initialize()
+        result = await self_healer.cycle()
+        actions = result.get("actions") or []
+        if not actions:
+            console.print(Panel(
+                f"[green]{result.get('message', 'Healthy')}[/green]\nOverall: {result.get('overall')}",
+                title="🩹 Self-Heal",
+                border_style="green",
+            ))
+            return
+        lines = [f"Overall: {result.get('overall')}", f"Recovered: {result.get('recovered', 0)}", ""]
+        for a in actions:
+            mark = "✓" if a.get("success") else "✗"
+            lines.append(f"{mark} {a.get('component')}: {a.get('detail')}")
+        console.print(Panel("\n".join(lines), title="🩹 Self-Heal", border_style="yellow"))
+
+    asyncio.run(_heal())
+
+
 @cli.group()
 def kaizen():
     """Kaizen — continuous improvement log."""

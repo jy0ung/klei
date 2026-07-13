@@ -11,15 +11,16 @@ Kaizen (改善) = continuous small improvement. Not a big redesign. Not a rewrit
 5. **Measure** — kaizen log + vitality + health checks
 6. **Compound** — every improvement is recorded so the next cycle starts higher
 
-## This Kaizen pass (v0.1.1)
+## This Kaizen pass (v0.1.2)
 
 | Defect / Waste | Fix | Category |
 |----------------|-----|----------|
-| CLI `lab`/`rag` shadowed imports | Import as `lab_mod` / `rag_mod` | defect |
-| Lab imported torch before data check | Empty-data guard first | waste |
-| Wiki query ignored body text | Weighted title/tags/content scoring | flow |
-| Brain/Lab not living organisms | `Brain(Organism)`, `Lab(Organism)` | standardization |
-| No continuous improvement memory | `haki/kaizen.py` + CLI | measurement |
+| Pydantic class Config warning | SettingsConfigDict | defect |
+| Embedding dim FutureWarning | compat `_embedding_dim()` | defect |
+| Weak insight extraction | multi-pattern + user_model update | flow |
+| Lab unusable without history | seed training pairs + `allow_seed` | waste |
+| Health recovery incomplete | SelfHealer + daemon loop + `haki heal` | standardization |
+| Heavy auto-heal downloads | skip TinyLlama download in auto recovery | waste |
 
 ## CLI
 
@@ -27,6 +28,7 @@ Kaizen (改善) = continuous small improvement. Not a big redesign. Not a rewrit
 haki kaizen list
 haki kaizen stats
 haki kaizen add -t "title" -p "problem" -a "action" -i "impact" -c defect
+haki heal
 ```
 
 ## How to run the next Kaizen cycle

@@ -53,6 +53,9 @@ haki chat
 haki kaizen list
 haki kaizen stats
 
+# Run one self-healing cycle
+haki heal
+
 # Run the self-improvement lab
 haki lab
 

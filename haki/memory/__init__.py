@@ -22,8 +22,24 @@ from pathlib import Path
 from typing import Any
 
 from haki.config import config
+from haki.organism import Organism
 
 logger = logging.getLogger(__name__)
+
+
+def _utc_now() -> datetime:
+    return datetime.utcnow()
+
+
+def _embedding_dim(model) -> int:
+    """Compat: sentence-transformers renamed get_sentence_embedding_dimension."""
+    if hasattr(model, "get_embedding_dimension"):
+        return int(model.get_embedding_dimension())
+    if hasattr(model, "get_sentence_embedding_dimension"):
+        return int(model.get_sentence_embedding_dimension())
+    # last resort: encode a probe
+    vec = model.encode(["probe"])
+    return int(len(vec[0]))
 
 
 @dataclass
@@ -34,7 +50,7 @@ class MemoryNode:
     role: str  # "user", "assistant", "system", "insight"
     embedding: list[float] | None = None
     metadata: dict[str, Any] = field(default_factory=dict)
-    created_at: datetime = field(default_factory=datetime.utcnow)
+    created_at: datetime = field(default_factory=_utc_now)
     importance: float = 1.0
 
     def to_dict(self) -> dict:
@@ -48,7 +64,7 @@ class MemoryNode:
         }
 
 
-class MemoryGraph:
+class MemoryGraph(Organism):
     """
     Persistent memory graph that learns from every interaction.
 
@@ -58,6 +74,7 @@ class MemoryGraph:
     """
 
     def __init__(self):
+        super().__init__("Memory")
         self._db_path = config.memory_db
         self._index_path = Path(str(config.memory_db) + ".faiss")
         self._embedding_model = None
@@ -74,6 +91,7 @@ class MemoryGraph:
         await self._init_embedding_model()
         await self._init_index()
         self._initialized = True
+        self.pulse("initialized")
         logger.info("Memory graph initialized with %d nodes.", len(await self.get_all()))
 
     async def _init_sqlite(self) -> None:
@@ -127,8 +145,7 @@ class MemoryGraph:
             return
         try:
             import faiss
-            import numpy as np
-            dim = self._embedding_model.get_sentence_embedding_dimension()
+            dim = _embedding_dim(self._embedding_model)
             if self._index_path.exists():
                 self._index = faiss.read_index(str(self._index_path))
             else:
@@ -161,11 +178,12 @@ class MemoryGraph:
         # Update index
         if self._index is not None and node.embedding:
             import numpy as np
-            vec = np.array([node.embedding], dtype=np.float32)
             import faiss
+            vec = np.array([node.embedding], dtype=np.float32)
             faiss.normalize_L2(vec)
             self._index.add(vec)
             faiss.write_index(self._index, str(self._index_path))
+        self.pulse("store_memory", input_bytes=len(node.content))
 
     async def store_interaction(self, user_input: str, assistant_output: str, tier: str = "") -> None:
         """Log an interaction (for self-learning)."""
@@ -176,13 +194,17 @@ class MemoryGraph:
                 (user_input, assistant_output, tier),
             )
             await db.commit()
+        self.pulse("store_interaction", input_bytes=len(user_input) + len(assistant_output))
 
     async def search(self, query: str, top_k: int | None = None) -> list[MemoryNode]:
         """Search memories by semantic similarity."""
         if self._embedding_model is None or self._index is None or self._index.ntotal == 0:
-            return await self._text_search(query, top_k)
+            results = await self._text_search(query, top_k)
+            self.pulse("search_text", input_bytes=len(query))
+            return results
 
         import numpy as np
+        import faiss
         top_k = top_k or config.rag_top_k
         vec = self._embedding_model.encode([query])
         faiss.normalize_L2(vec.astype(np.float32))
@@ -195,6 +217,7 @@ class MemoryGraph:
             if idx >= 0 and idx < len(all_nodes):
                 all_nodes[idx].importance *= (1 + float(score))  # reinforce
                 results.append(all_nodes[idx])
+        self.pulse("search", input_bytes=len(query), output_bytes=len(results))
         return results
 
     async def _text_search(self, query: str, top_k: int | None = None) -> list[MemoryNode]:
@@ -281,29 +304,93 @@ class MemoryGraph:
         await self.store_interaction(user_input, assistant_output)
 
         # Generate insights about user
-        # (In production, this would call an LLM — here we do structured extraction)
         insights = self._extract_insights(user_input, assistant_output)
         for insight in insights:
             node = MemoryNode(
-                id=f"insight-{datetime.utcnow().isoformat()}-{hash(insight) % 10000}",
+                id=f"insight-{_utc_now().isoformat()}-{hash(insight) % 10000}",
                 content=insight,
                 role="insight",
                 importance=0.8,
             )
             await self.store_memory(node)
 
+        # Update lightweight user model from cumulative insights
+        if insights:
+            model = await self.get_user_model() or {
+                "theory_of_mind": "",
+                "preferences": {},
+                "communication_style": "unknown",
+            }
+            prefs = model.get("preferences") or {}
+            for insight in insights:
+                if insight.startswith("User preference:"):
+                    prefs["likes"] = prefs.get("likes", []) + [insight]
+                elif insight.startswith("User dislike:"):
+                    prefs["dislikes"] = prefs.get("dislikes", []) + [insight]
+                elif insight.startswith("User name:"):
+                    prefs["name"] = insight.split(":", 1)[-1].strip()
+                elif insight.startswith("User goal:"):
+                    prefs["goals"] = prefs.get("goals", []) + [insight]
+            tom = model.get("theory_of_mind") or ""
+            if insights:
+                tom = (tom + " | " + " ; ".join(insights[-3:])).strip(" |")
+            await self.update_user_model(
+                theory_of_mind=tom[:2000],
+                preferences=prefs,
+                comm_style=model.get("communication_style") or "unknown",
+            )
+        self.pulse("learn_from_interaction", input_bytes=len(user_input))
+
     def _extract_insights(self, user_input: str, assistant_output: str) -> list[str]:
-        """Simple heuristic insight extraction (placeholder for LLM-based reasoning)."""
-        insights = []
-        q = user_input.lower()
-        if "i like" in q or "i prefer" in q:
-            insights.append(f"User preference: {user_input}")
-        if "my name is" in q:
-            name = user_input.split("my name is")[-1].strip().split()[0]
-            insights.append(f"User name: {name}")
-        if "don't like" in q or "hate" in q:
-            insights.append(f"User dislike: {user_input}")
-        return insights
+        """
+        Structured insight extraction beyond single-phrase regex.
+        Uses multiple pattern families; LLM-based extraction can replace this later.
+        """
+        import re
+
+        insights: list[str] = []
+        text = user_input.strip()
+        q = text.lower()
+
+        patterns = [
+            (r"(?:i (?:really )?like|i prefer|i love)\s+(.+)", "User preference"),
+            (r"(?:i (?:really )?hate|i don't like|i dislike|i can't stand)\s+(.+)", "User dislike"),
+            (r"(?:my name is|i am|i'm)\s+([A-Za-z][\w\-']{1,40})", "User name"),
+            (r"(?:please always|always)\s+(.+)", "User instruction"),
+            (r"(?:never|do not|don't)\s+(.+)", "User constraint"),
+            (r"(?:my goal is|i want to|i need to|i'm trying to)\s+(.+)", "User goal"),
+            (r"(?:i work (?:at|for)|i'm at|i am at)\s+(.+)", "User workplace"),
+            (r"(?:call me|refer to me as)\s+(.+)", "User name"),
+            (r"(?:timezone|i am in|i'm in)\s+([A-Za-z/_\- ]{2,40})", "User location"),
+        ]
+
+        for pattern, label in patterns:
+            m = re.search(pattern, q, flags=re.IGNORECASE)
+            if m:
+                value = m.group(1).strip(" .,!?:;")
+                if value:
+                    # Preserve original casing slice when possible
+                    insights.append(f"{label}: {value}")
+
+        # Topic signal from question style
+        if q.endswith("?") and len(q.split()) >= 4:
+            insights.append(f"User asked about: {text[:120]}")
+
+        # Style preference from explicit requests
+        if any(w in q for w in ("be concise", "short answer", "briefly", "tl;dr")):
+            insights.append("User communication style: concise")
+        if any(w in q for w in ("explain in detail", "be thorough", "step by step", "deep dive")):
+            insights.append("User communication style: detailed")
+
+        # Deduplicate while preserving order
+        seen = set()
+        unique = []
+        for item in insights:
+            key = item.lower()
+            if key not in seen:
+                seen.add(key)
+                unique.append(item)
+        return unique
 
 
 # Singleton

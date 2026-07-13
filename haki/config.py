@@ -1,11 +1,18 @@
 """Haki — Cognitive OS core exceptions and config."""
-from pydantic_settings import BaseSettings
-from pydantic import Field
 from pathlib import Path
+
+from pydantic import Field
+from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class HakiConfig(BaseSettings):
     """Global configuration loaded from environment or .env."""
+
+    model_config = SettingsConfigDict(
+        env_prefix="HAKI_",
+        env_file=".env",
+        extra="ignore",
+    )
 
     # Paths
     data_dir: Path = Field(default=Path.home() / ".haki")
@@ -31,13 +38,11 @@ class HakiConfig(BaseSettings):
     # Lab
     lab_time_budget_seconds: int = Field(default=300)
     lab_gpu: bool = Field(default=True)
+    lab_min_training_pairs: int = Field(default=3)
 
     # Health
     health_check_interval_seconds: int = Field(default=30)
-
-    class Config:
-        env_prefix = "HAKI_"
-        env_file = ".env"
+    self_heal_interval_seconds: int = Field(default=300)
 
 
 config = HakiConfig()

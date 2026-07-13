@@ -49,15 +49,28 @@ def test_cli_module_imports_not_shadowed():
 
 @pytest.mark.asyncio
 async def test_lab_empty_data_fail_fast(tmp_haki_dir):
-    """Lab should fail fast with empty data before training."""
+    """Lab should fail when seed data is disallowed and memory is empty."""
     from haki.lab import lab
     from haki.memory import memory
 
     await memory.initialize()
     await lab.initialize()
-    result = await lab.fine_tune_model(epochs=1)
+    # Wipe seed path behavior by disallowing seed and forcing empty interactions
+    result = await lab.fine_tune_model(epochs=1, allow_seed=False)
     assert result.status == "failed"
-    assert "No training data" in result.description_text
+    assert "No training data" in result.description_text or "Need at least" in result.description_text
+
+
+@pytest.mark.asyncio
+async def test_lab_seed_data_available(tmp_haki_dir):
+    """With seed allowed, lab can generate baseline training pairs."""
+    from haki.lab import lab
+    from haki.memory import memory
+
+    await memory.initialize()
+    await lab.initialize()
+    path = await lab.create_training_data_from_memory()
+    assert lab.training_pair_count(path) >= 3
 
 
 @pytest.mark.asyncio
@@ -79,13 +92,48 @@ async def test_wiki_query_matches_content(tmp_haki_dir):
 
 
 @pytest.mark.asyncio
+async def test_memory_insight_extraction(tmp_haki_dir):
+    from haki.memory import memory
+
+    await memory.initialize()
+    await memory.learn_from_interaction(
+        "My name is Alex and I prefer concise answers. I want to automate inventory.",
+        "Got it.",
+    )
+    nodes = await memory.get_all()
+    contents = " ".join(n.content for n in nodes if n.role == "insight").lower()
+    assert "name" in contents or "alex" in contents
+    assert "prefer" in contents or "concise" in contents or "goal" in contents
+
+
+@pytest.mark.asyncio
+async def test_self_heal_cycle(tmp_haki_dir):
+    from haki.self_heal import self_healer
+    from haki.memory import memory
+
+    await memory.initialize()
+    result = await self_healer.cycle()
+    assert "overall" in result
+    assert "actions" in result
+
+
+def test_config_uses_settings_config_dict():
+    from haki.config import HakiConfig
+    assert hasattr(HakiConfig, "model_config")
+
+
+@pytest.mark.asyncio
 async def test_brain_and_lab_are_organisms():
     from haki.brain import brain
     from haki.lab import lab
+    from haki.memory import memory
+    from haki.health import monitor
     from haki.organism import Organism
 
     assert isinstance(brain, Organism)
     assert isinstance(lab, Organism)
+    assert isinstance(memory, Organism)
+    assert isinstance(monitor, Organism)
     assert brain.name == "Brain"
     assert lab.name == "Lab"
 

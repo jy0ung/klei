@@ -124,6 +124,41 @@ SEED_IMPROVEMENTS = [
         "impact": "Status dashboard reflects real activity across core modules",
         "category": "standardization",
     },
+    {
+        "title": "Pydantic Settings ConfigDict migration",
+        "problem": "class Config deprecated warning on every import",
+        "action": "Use SettingsConfigDict model_config",
+        "impact": "Clean startup; forward-compatible with Pydantic v3",
+        "category": "defect",
+    },
+    {
+        "title": "Embedding dim API compatibility",
+        "problem": "get_sentence_embedding_dimension renamed in sentence-transformers",
+        "action": "Compat helper prefers get_embedding_dimension",
+        "impact": "No FutureWarning; works across library versions",
+        "category": "defect",
+    },
+    {
+        "title": "Richer memory insight extraction + user model",
+        "problem": "Insights were 3 brittle substring checks",
+        "action": "Pattern families for prefs/goals/style + user_model updates",
+        "impact": "Self-learning captures more useful Theory of Mind signal",
+        "category": "flow",
+    },
+    {
+        "title": "Lab seed training pairs",
+        "problem": "Lab unusable until real chat history exists",
+        "action": "Seed domain instruction pairs when under threshold",
+        "impact": "Lab can smoke-test and train baseline adapters immediately",
+        "category": "waste",
+    },
+    {
+        "title": "Self-healing recovery cycle",
+        "problem": "Health only reported failures; recovery was partial",
+        "action": "SelfHealer cycle + daemon loop + haki heal CLI",
+        "impact": "Autonomous re-init for memory/wiki/brain/rag/lab",
+        "category": "standardization",
+    },
 ]
 
 
