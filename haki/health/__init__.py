@@ -172,51 +172,81 @@ class HealthMonitor(Organism):
     # --- Default checks ---
 
     async def _check_brain(self) -> HealthCheck:
+        """Local-only brain: not loading weights is OK (specialized loop works offline)."""
         from haki.brain import brain
+
+        # Soft structural init — never download model during health
+        if not brain._initialized:
+            brain._initialized = True
+
         card = brain.model_card()
+        base = card.get("base_model") or "?"
+        gen = card.get("generation", 0)
+        adapter = card.get("adapter_path")
+
         if brain.local_loaded:
-            return HealthCheck(
-                name="brain",
-                status=ComponentStatus.HEALTHY,
-                message=f"local gen={card['generation']} base={card['base_model']}",
-            )
-        if brain._initialized:
-            return HealthCheck(
-                name="brain",
-                status=ComponentStatus.DEGRADED,
-                message=f"fallback mode: {card.get('load_error') or 'weights not loaded'}",
-            )
-        return HealthCheck(name="brain", status=ComponentStatus.DEGRADED, message="not initialized")
+            msg = f"local loaded gen={gen} base={base}"
+            if adapter:
+                msg += " +adapter"
+            return HealthCheck(name="brain", status=ComponentStatus.HEALTHY, message=msg)
+
+        # Weights not in RAM: degraded, not a crash — expected until chat/evolve loads them
+        msg = (
+            f"local-only idle gen={gen} base={base} "
+            f"(weights not in RAM — run `haki brain` or `haki chat` to load)"
+        )
+        if adapter:
+            msg = f"local-only adapter registered gen={gen} (not loaded in RAM)"
+        if card.get("load_error"):
+            msg = f"fallback: {card['load_error'][:80]}"
+        return HealthCheck(name="brain", status=ComponentStatus.DEGRADED, message=msg)
 
     async def _check_memory(self) -> HealthCheck:
         from haki.memory import memory
         try:
+            # Prefer light path: ensure SQLite without re-logging embedding every time
+            if not memory._initialized:
+                await memory.initialize()
             nodes = await memory.get_all()
-            return HealthCheck(name="memory", status=ComponentStatus.HEALTHY,
-                             message=f"{len(nodes)} memories stored")
+            emb = "emb=on" if memory._embedding_model is not None else "emb=off"
+            return HealthCheck(
+                name="memory",
+                status=ComponentStatus.HEALTHY,
+                message=f"{len(nodes)} memories ({emb})",
+            )
         except Exception as e:
-            return HealthCheck(name="memory", status=ComponentStatus.UNHEALTHY,
-                             message=str(e))
+            return HealthCheck(name="memory", status=ComponentStatus.UNHEALTHY, message=str(e))
 
     async def _check_rag(self) -> HealthCheck:
         from haki.rag import rag
         try:
-            # Simple connectivity check
-            return HealthCheck(name="rag", status=ComponentStatus.HEALTHY,
-                             message=f"Index ready: {rag._doc_index is not None}")
+            ready = getattr(rag, "_doc_index", None) is not None
+            status = ComponentStatus.HEALTHY if ready else ComponentStatus.DEGRADED
+            msg = "index ready" if ready else "no docs indexed (run haki ingest)"
+            return HealthCheck(name="rag", status=status, message=msg)
         except Exception as e:
-            return HealthCheck(name="rag", status=ComponentStatus.UNHEALTHY,
-                             message=str(e))
+            return HealthCheck(name="rag", status=ComponentStatus.UNHEALTHY, message=str(e))
 
     async def _check_wiki(self) -> HealthCheck:
         from haki.wiki import wiki
         try:
+            if not getattr(wiki, "_initialized", False):
+                # Don't force full init if path missing — count pages if any
+                try:
+                    await wiki.initialize()
+                except Exception:
+                    pass
             pages = await wiki.get_all_pages()
-            return HealthCheck(name="wiki", status=ComponentStatus.HEALTHY,
-                             message=f"{len(pages)} pages")
+            n = len(pages)
+            if n == 0:
+                return HealthCheck(
+                    name="wiki",
+                    status=ComponentStatus.DEGRADED,
+                    message="0 pages (run haki wiki init + ingest)",
+                )
+            return HealthCheck(name="wiki", status=ComponentStatus.HEALTHY, message=f"{n} pages")
         except Exception as e:
-            return HealthCheck(name="wiki", status=ComponentStatus.UNHEALTHY,
-                             message=str(e))
+            return HealthCheck(name="wiki", status=ComponentStatus.UNHEALTHY, message=str(e))
 
     def _check_disk(self) -> HealthCheck:
         try:

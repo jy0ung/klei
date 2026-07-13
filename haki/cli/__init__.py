@@ -206,10 +206,22 @@ def health():
     """Check Haki's system health."""
 
     async def _check():
-        await memory.initialize()
-        await rag_mod.initialize()
+        # Quieter health runs (HF/httpx spam is noise)
+        logging.getLogger("httpx").setLevel(logging.WARNING)
+        logging.getLogger("httpcore").setLevel(logging.WARNING)
+        logging.getLogger("huggingface_hub").setLevel(logging.WARNING)
+        logging.getLogger("sentence_transformers").setLevel(logging.WARNING)
+        logging.getLogger("transformers").setLevel(logging.ERROR)
+
         report = await monitor.check_all()
         _print_health(report)
+        # One-line tip when brain weights idle
+        from haki.brain import brain
+        if not brain.local_loaded:
+            console.print(
+                "[dim]Tip: brain weights load on demand — "
+                "`haki brain` / `haki chat` / successful `haki evolve` promotion.[/dim]"
+            )
 
     asyncio.run(_check())
 
