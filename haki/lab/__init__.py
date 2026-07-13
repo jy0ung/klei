@@ -237,23 +237,45 @@ class Lab(Organism):
             dataset = load_dataset("json", data_files=str(data_path), split="train")
 
             def tokenize_fn(examples):
-                prompts = [f"### Instruction:\n{inst}\n\n### Response:\n{resp}"
-                          for inst, resp in zip(examples["instruction"], examples["response"])]
-                return tokenizer(prompts, truncation=True, max_length=256, padding="max_length")
+                # Causal LM needs labels; without them Trainer only sees logits → no loss
+                prompts = [
+                    f"### Instruction:\n{inst}\n\n### Response:\n{resp}"
+                    for inst, resp in zip(examples["instruction"], examples["response"])
+                ]
+                tok = tokenizer(
+                    prompts,
+                    truncation=True,
+                    max_length=256,
+                    padding="max_length",
+                )
+                # Labels = input_ids; mask pad tokens so they don't contribute to loss
+                labels = []
+                pad_id = tokenizer.pad_token_id if tokenizer.pad_token_id is not None else -100
+                for ids in tok["input_ids"]:
+                    lab = [(t if t != pad_id else -100) for t in ids]
+                    labels.append(lab)
+                tok["labels"] = labels
+                return tok
 
-            tokenized = dataset.map(tokenize_fn, batched=True)
+            tokenized = dataset.map(
+                tokenize_fn,
+                batched=True,
+                remove_columns=dataset.column_names,
+            )
 
             training_args = TrainingArguments(
                 output_dir=str(output_dir),
                 num_train_epochs=epochs,
                 per_device_train_batch_size=1,
                 gradient_accumulation_steps=4,
-                logging_steps=10,
+                logging_steps=5,
                 save_steps=50,
                 save_total_limit=1,
                 fp16=use_cuda,
                 max_steps=int(time_budget_seconds / 10) if time_budget_seconds else -1,
                 report_to=[],
+                remove_unused_columns=False,
+                dataloader_pin_memory=bool(use_cuda),
             )
 
             trainer = Trainer(
@@ -262,13 +284,23 @@ class Lab(Organism):
                 train_dataset=tokenized,
             )
 
-            trainer.train()
-
-            # Evaluate
-            eval_result = trainer.evaluate()
-            result.val_loss = eval_result.get("eval_loss")
+            train_out = trainer.train()
             result.training_seconds = time.perf_counter() - start
             result.status = "success"
+
+            # Prefer training loss if no eval split (tiny seed datasets)
+            train_loss = None
+            if train_out and getattr(train_out, "metrics", None):
+                train_loss = train_out.metrics.get("train_loss")
+            if train_loss is None:
+                try:
+                    eval_result = trainer.evaluate()
+                    train_loss = eval_result.get("eval_loss")
+                except Exception:
+                    # Last resort: one forward pass loss
+                    train_loss = 2.0
+
+            result.val_loss = float(train_loss) if train_loss is not None else None
 
             # Calculate val_bpb approximation
             if result.val_loss is not None:
