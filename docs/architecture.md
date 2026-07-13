@@ -55,17 +55,24 @@
 ## Self-evolution (core product loop)
 
 ```
-1. User chats → Memory.learn_from_interaction
-2. haki evolve / Lab.evolve_once
-3. Build training.jsonl (interactions + seed if thin)
-4. LoRA fine-tune on base model (CPU by default)
-5. val_bpb ≈ val_loss / ln(2)
-6. If best:
-     write active_model.json
-     brain.promote_adapter() → reload
-     generation N → N+1
-7. Next think() uses the new living brain
+1. User chats → SpecializedBrain.think (assess/research/experiment/learn)
+2. Mastery map updated; memory/wiki evidence compounds
+3. haki evolve / Lab.evolve_once when self-improve experiment runs
+4. LoRA fine-tune on base model
+5. If best → promote → generation N+1
 ```
+
+### Specialized brain (v0.3)
+
+Control is **code**, not cloud LLM:
+
+- **Assess** mastery confidence  
+- **Research** memory + wiki + RAG if unknown  
+- **Experiment** hypothesis store or Lab evolve for self-topics  
+- **Synthesize** structural (+ optional local neural polish)  
+- **Learn** mastery + memory  
+
+See [modules/cognition.md](modules/cognition.md).
 
 ### active_model.json
 

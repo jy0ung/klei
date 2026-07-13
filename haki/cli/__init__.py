@@ -65,30 +65,41 @@ def daemon():
 
 
 @cli.command()
-@click.option("--message", "-m", help="Single message to send (interactive mode if omitted)")
-def chat(message: str | None):
-    """Chat with Haki's local brain (no cloud API)."""
+@click.option("--message", "-m", help="Single message (interactive if omitted)")
+@click.option("--no-experiment", is_flag=True, help="Skip experiment phase (research only)")
+def chat(message: str | None, no_experiment: bool):
+    """Chat with Haki's specialized brain (assess → research → experiment → learn)."""
 
     async def _chat():
-        await brain.initialize()
+        from haki.cognition import specialized_brain
+
+        await specialized_brain.initialize()
         await memory.initialize()
         await rag_mod.initialize()
 
-        if message:
-            with console.status("[bold cyan]Thinking (local)...[/bold cyan]"):
-                result = await brain.think(message)
-                await memory.learn_from_interaction(message, result.text)
-
-            card = brain.model_card()
+        async def one_turn(user_input: str):
+            with console.status("[bold cyan]Thinking (specialized loop)...[/bold cyan]"):
+                trace = await specialized_brain.think(
+                    user_input, allow_experiment=not no_experiment
+                )
+            meta = (
+                f"phases={'+'.join(trace.phases)} conf={trace.confidence:.2f} "
+                f"research={trace.research_hits} exp={trace.experimented} "
+                f"gen={trace.generation} ({trace.latency_ms:.0f}ms)"
+            )
             console.print(Panel(
-                Markdown(result.text),
-                title=f"🧠 Haki local gen={card['generation']} ({result.latency_ms:.0f}ms)",
+                Markdown(trace.answer),
+                title=f"🧠 Haki · {meta}",
                 border_style="cyan",
             ))
+
+        if message:
+            await one_turn(message)
         else:
             console.print(Panel(
-                "[bold]Haki Chat[/bold] — local-only brain. Type 'quit' to stop.\n"
-                "Commands: /health, /memory, /search, /remember, /brain, /evolve",
+                "[bold]Haki Specialized Brain[/bold] — local-only.\n"
+                "Loop: assess → research → experiment → synthesize → learn\n"
+                "Commands: /health /brain /mastery /evolve /memory /search /remember  |  quit",
                 border_style="cyan",
             ))
             while True:
@@ -100,50 +111,94 @@ def chat(message: str | None):
                     break
                 if not user_input.strip():
                     continue
-
                 if user_input == "/health":
                     report = await monitor.check_all()
                     _print_health(report)
                     continue
-                elif user_input == "/brain":
+                if user_input == "/brain":
                     console.print(brain.model_card())
                     continue
-                elif user_input == "/evolve":
+                if user_input == "/mastery":
+                    from haki.mastery import mastery
+                    mastery.load()
+                    for t in mastery.all_topics()[:15]:
+                        console.print(
+                            f"  [{t.confidence:.2f}] {t.id}: {t.name} "
+                            f"(exp={t.experiments} open={len(t.open_questions)})"
+                        )
+                    console.print(mastery.stats())
+                    continue
+                if user_input == "/evolve":
                     with console.status("[magenta]Evolving...[/magenta]"):
                         r = await lab_mod.evolve_once()
                     console.print(f"Evolve: {r.status} {r.description_text} val_bpb={r.val_bpb}")
                     continue
-                elif user_input == "/memory":
+                if user_input == "/memory":
                     nodes = await memory.get_all()
                     for n in nodes[-10:]:
                         console.print(f"[dim][{n.role}][/dim] {n.content[:100]}")
                     continue
-                elif user_input.startswith("/search "):
-                    query = user_input[8:]
-                    results = await memory.search(query)
+                if user_input.startswith("/search "):
+                    results = await memory.search(user_input[8:])
                     for r in results:
                         console.print(f"[yellow]→[/yellow] {r.content[:100]}")
                     continue
-                elif user_input.startswith("/remember "):
-                    text = user_input[10:]
+                if user_input.startswith("/remember "):
                     from haki.memory import MemoryNode
-                    import uuid
-                    node = MemoryNode(id=str(uuid.uuid4()), content=text, role="insight")
+                    import uuid as _uuid
+                    node = MemoryNode(id=str(_uuid.uuid4()), content=user_input[10:], role="insight")
                     await memory.store_memory(node)
                     console.print("[green]Stored.[/green]")
                     continue
-
-                with console.status("[bold cyan]Thinking (local)...[/bold cyan]"):
-                    result = await brain.think(user_input)
-                    await memory.learn_from_interaction(user_input, result.text)
-
-                console.print(Panel(
-                    Markdown(result.text),
-                    title=f"Haki local gen={result.generation}",
-                    border_style="cyan",
-                ))
+                await one_turn(user_input)
 
     asyncio.run(_chat())
+
+
+@cli.command("think")
+@click.argument("query")
+@click.option("--no-experiment", is_flag=True)
+def think_cmd(query: str, no_experiment: bool):
+    """One full metacognitive episode (assess → research → experiment → learn)."""
+
+    async def _think():
+        from haki.cognition import specialized_brain
+        await specialized_brain.initialize()
+        with console.status("[cyan]Cognitive loop...[/cyan]"):
+            trace = await specialized_brain.think(query, allow_experiment=not no_experiment)
+        console.print(Panel(Markdown(trace.answer), title="🧠 Think", border_style="cyan"))
+        table = Table(title="Trace")
+        table.add_column("Field")
+        table.add_column("Value")
+        for k, v in trace.to_dict().items():
+            if k == "answer":
+                continue
+            table.add_row(k, str(v)[:80])
+        console.print(table)
+
+    asyncio.run(_think())
+
+
+@cli.command("mastery")
+def mastery_cmd():
+    """Show mastery map — what Haki knows and open gaps."""
+    from haki.mastery import mastery
+
+    mastery.load()
+    stats = mastery.stats()
+    table = Table(title="🎯 Mastery Map")
+    table.add_column("Topic", style="cyan")
+    table.add_column("Conf", justify="right")
+    table.add_column("Exp", justify="right")
+    table.add_column("Open Q")
+    for t in mastery.all_topics():
+        oq = t.open_questions[0][:40] if t.open_questions else ""
+        table.add_row(t.id, f"{t.confidence:.2f}", str(t.experiments), oq)
+    console.print(table)
+    console.print(
+        f"avg={stats['avg_confidence']:.2f} topics={stats['topics']} "
+        f"experiments={stats['experiments']} open={stats['open_questions']}"
+    )
 
 
 @cli.command()

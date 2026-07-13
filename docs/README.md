@@ -22,6 +22,7 @@
 | Module | File | Purpose |
 |--------|------|---------|
 | **Brain** | [modules/brain.md](modules/brain.md) | Local model + self-replacement |
+| **Cognition** | [modules/cognition.md](modules/cognition.md) | Specialized think loop (research/experiment) |
 | **Lab** | [modules/lab.md](modules/lab.md) | Evolve / fine-tune / promote |
 | **Memory** | [modules/memory.md](modules/memory.md) | Self-learning graph |
 | **Wiki** | [modules/wiki.md](modules/wiki.md) | Compiled knowledge |
