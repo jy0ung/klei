@@ -95,9 +95,48 @@ class MCPBridge:
         },
     ]
 
+    WIKI_TOOLS = [
+        {
+            "name": "wiki_init",
+            "description": "Initialize the wiki directory and schema.",
+            "inputSchema": {"type": "object", "properties": {}},
+        },
+        {
+            "name": "wiki_ingest",
+            "description": "Ingest a document into the wiki knowledge base.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "path": {"type": "string", "description": "File path of the source document."},
+                    "title": {"type": "string", "description": "Source title (optional)."},
+                    "entities": {"type": "string", "description": "Comma-separated entity list."},
+                    "concepts": {"type": "string", "description": "Comma-separated concept list."},
+                },
+                "required": ["path"],
+            },
+        },
+        {
+            "name": "wiki_query",
+            "description": "Search the wiki for relevant pages.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "question": {"type": "string", "description": "The question to answer."},
+                    "top_k": {"type": "integer", "default": 5},
+                },
+                "required": ["question"],
+            },
+        },
+        {
+            "name": "wiki_lint",
+            "description": "Lint the wiki: find orphan pages, stale entries, contradictions.",
+            "inputSchema": {"type": "object", "properties": {}},
+        },
+    ]
+
     async def list_tools(self) -> list[dict]:
         """Return available MCP tools."""
-        return self.TOOLS
+        return self.TOOLS + self.WIKI_TOOLS
 
     async def call_tool(self, name: str, arguments: dict[str, Any]) -> list[dict]:
         """Execute an MCP tool call."""
@@ -106,6 +145,7 @@ class MCPBridge:
         from haki.rag import rag
         from haki.health import monitor
         from haki.lab import lab
+        from haki.wiki import wiki
         import uuid
         from datetime import datetime
 
@@ -153,6 +193,42 @@ class MCPBridge:
                     epochs=arguments.get("epochs", 1),
                 )
                 return [{"type": "text", "text": json.dumps(result.to_dict(), indent=2)}]
+
+            # Wiki tools
+            elif name == "wiki_init":
+                await wiki.initialize()
+                return [{"type": "text", "text": f"Wiki initialized at {wiki.wiki_path()}"}]
+
+            elif name == "wiki_ingest":
+                entities = [e.strip() for e in arguments.get("entities", "").split(",")] if arguments.get("entities") else []
+                concepts = [c.strip() for c in arguments.get("concepts", "").split(",")] if arguments.get("concepts") else []
+                result = await wiki.ingest_source(
+                    arguments["path"],
+                    title=arguments.get("title"),
+                    entities=entities,
+                    concepts=concepts,
+                )
+                if "error" in result:
+                    return [{"type": "text", "text": f"Error: {result['error']}"}]
+                return [{"type": "text", "text": f"Ingested {result['count']} pages: {', '.join(result['pages_touched'])}"}]
+
+            elif name == "wiki_query":
+                result = await wiki.query(arguments["question"], top_k=arguments.get("top_k", 5))
+                sources = "\n".join(f"- [{s['title']}]({s['path']})" for s in result["sources"])
+                return [{"type": "text", "text": f"Sources:\n{sources}\n\n{result['context']}"}]
+
+            elif name == "wiki_lint":
+                result = await wiki.lint()
+                if result.is_clean:
+                    return [{"type": "text", "text": "Wiki is clean!"}]
+                lines = []
+                if result.orphan_pages:
+                    lines.append(f"Orphans: {len(result.orphan_pages)}")
+                if result.stale_pages:
+                    lines.append(f"Stale: {len(result.stale_pages)}")
+                if result.suggested_questions:
+                    lines.append(f"Suggestions: {', '.join(result.suggested_questions[:3])}")
+                return [{"type": "text", "text": "\n".join(lines)}]
 
             else:
                 return [{"type": "text", "text": f"Unknown tool: {name}"}]

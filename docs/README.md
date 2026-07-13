@@ -17,7 +17,8 @@
 | Module | File | Purpose |
 |--------|------|---------|
 | **Brain** | [modules/brain.md](modules/brain.md) | Dual-tier model orchestration |
-| **Memory** | [modules/memory.md](modules/memory.md) | Persistent self-learning graph |
+| **Memory** | [modules/memory.md](modules/memory.md) | Persistent self-learning memory |
+| **Wiki** | [modules/wiki.md](modules/wiki.md) | LLM-maintained knowledge base |
 | **RAG** | [modules/rag.md](modules/rag.md) | Retrieval-augmented generation |
 | **Lab** | [modules/lab.md](modules/lab.md) | Autonomous model creation |
 | **Health** | [modules/health.md](modules/health.md) | Self-healing monitor |

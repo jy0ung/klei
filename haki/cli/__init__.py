@@ -276,5 +276,154 @@ def ingest(path: str):
     asyncio.run(_ingest())
 
 
+@cli.group()
+def wiki():
+    """Wiki operations: ingest, query, lint."""
+    pass
+
+
+@wiki.command("init")
+def wiki_init():
+    """Initialize the wiki directory and schema."""
+
+    async def _init():
+        from haki.wiki import wiki
+        await wiki.initialize()
+        console.print(Panel(
+            f"[bold green]Wiki initialized![/bold green]\n\n"
+            f"Path: {wiki.wiki_path()}\n"
+            f"Schema: schema.md\n"
+            f"Index: index.md\n"
+            f"Log: log.md",
+            title="📝 Wiki",
+            border_style="green",
+        ))
+
+    asyncio.run(_init())
+
+
+@wiki.command("ingest")
+@click.argument("path")
+@click.option("--title", "-t", default=None, help="Source title")
+@click.option("--entities", "-e", default=None, help="Comma-separated entity list")
+@click.option("--concepts", "-c", default=None, help="Comma-separated concept list")
+def wiki_ingest(path: str, title: str | None, entities: str | None, concepts: str | None):
+    """Ingest a document into the wiki."""
+    import pathlib
+
+    async def _ingest():
+        from haki.wiki import wiki
+        await wiki.initialize()
+
+        p = pathlib.Path(path)
+        if not p.exists():
+            console.print(f"[red]File not found: {path}[/red]")
+            return
+
+        entity_list = [e.strip() for e in entities.split(",")] if entities else []
+        concept_list = [c.strip() for c in concepts.split(",")] if concepts else []
+
+        with console.status(f"Ingesting {path}..."):
+            result = await wiki.ingest_source(
+                p, title=title, entities=entity_list, concepts=concept_list,
+            )
+
+        if "error" in result:
+            console.print(f"[red]Error: {result['error']}[/red]")
+            return
+
+        console.print(Panel(
+            f"[bold green]Ingested: {result['source']}[/bold green]\n\n"
+            f"Pages touched: {result['count']}\n"
+            + "\n".join(f"  - {p}" for p in result["pages_touched"]),
+            title="📝 Wiki Ingest",
+            border_style="green",
+        ))
+
+    asyncio.run(_ingest())
+
+
+@wiki.command("query")
+@click.argument("question")
+@click.option("--top-k", "-k", default=5, type=int, help="Number of pages to retrieve")
+def wiki_query(question: str, top_k: int):
+    """Query the wiki for an answer."""
+
+    async def _query():
+        from haki.wiki import wiki
+        await wiki.initialize()
+        result = await wiki.query(question, top_k=top_k)
+
+        console.print(Panel(
+            f"[bold cyan]Question:[/bold cyan] {question}\n\n"
+            f"[bold]Sources:[/bold] {len(result['sources'])}\n"
+            + "\n".join(f"  - [{s['title']}]({s['path']})" for s in result["sources"])
+            + "\n\n[bold]Context:[/bold]\n" + result["context"][:2000],
+            title="📝 Wiki Query",
+            border_style="cyan",
+        ))
+
+    asyncio.run(_query())
+
+
+@wiki.command("lint")
+def wiki_lint():
+    """Lint the wiki: find orphans, staleness, contradictions."""
+
+    async def _lint():
+        from haki.wiki import wiki
+        await wiki.initialize()
+        result = await wiki.lint()
+
+        if result.is_clean:
+            console.print("[green]Wiki is clean![/green]")
+            return
+
+        lines = []
+        if result.orphan_pages:
+            lines.append(f"[bold]Orphan pages:[/bold] {len(result.orphan_pages)}")
+            lines.extend(f"  - {p}" for p in result.orphan_pages[:10])
+        if result.stale_pages:
+            lines.append(f"[bold]Stale pages:[/bold] {len(result.stale_pages)}")
+            lines.extend(f"  - {p}" for p in result.stale_pages[:10])
+        if result.suggested_questions:
+            lines.append("[bold]Suggested questions:[/bold]")
+            lines.extend(f"  - {q}" for q in result.suggested_questions)
+
+        console.print(Panel(
+            "\n".join(lines) if lines else "Wiki is clean!",
+            title="📝 Wiki Lint",
+            border_style="yellow",
+        ))
+
+    asyncio.run(_lint())
+
+
+@wiki.command("status")
+def wiki_status():
+    """Show wiki statistics."""
+
+    async def _status():
+        from haki.wiki import wiki
+        await wiki.initialize()
+        pages = await wiki.get_all_pages()
+
+        from collections import Counter
+        by_type = Counter(p.page_type.value for p in pages)
+
+        table = Table(title="📝 Wiki Statistics")
+        table.add_column("Type", style="cyan")
+        table.add_column("Count", justify="right")
+
+        for ptype, count in sorted(by_type.items()):
+            table.add_row(ptype, str(count))
+        table.add_row("[bold]Total[/bold]", str(len(pages)))
+
+        console.print(table)
+        console.print(f"Wiki path: {wiki.wiki_path()}")
+
+    asyncio.run(_status())
+
+
 if __name__ == "__main__":
     cli()

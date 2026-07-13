@@ -8,6 +8,7 @@ Haki integrates four research pillars into a single autonomous system:
 |--------|--------|------|
 | **Brain** | [CognitiveOS](https://cognitive-os.org/) | Dual-tier model orchestration (narrow local + wide remote) |
 | **Memory** | [Honcho](https://docs.honcho.to/) | Persistent memory graph with Theory of Mind, self-learning from interactions |
+| **Wiki** | [Karpathy LLM Wiki](https://gist.github.com/karpathy/442a6bf555914893e9891c11519de94f) | LLM-maintained persistent knowledge base with ingest/query/lint |
 | **RAG** | [AWS](https://aws.amazon.com/what-is/retrieval-augmented-generation/) | Retrieval-augmented generation for knowledge grounding |
 | **Lab** | [Autoresearch](https://github.com/karpathy/autoresearch) | Autonomous experiment loop that creates specialized models |
 | **Health** | — | Self-monitoring, auto-recovery, rollback |

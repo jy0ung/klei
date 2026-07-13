@@ -84,6 +84,7 @@ class HealthMonitor:
         self._checks["brain"] = self._check_brain
         self._checks["memory"] = self._check_memory
         self._checks["rag"] = self._check_rag
+        self._checks["wiki"] = self._check_wiki
         self._checks["disk"] = self._check_disk
         self._checks["bus"] = self._check_bus
 
@@ -194,6 +195,16 @@ class HealthMonitor:
                              message=f"Index ready: {rag._doc_index is not None}")
         except Exception as e:
             return HealthCheck(name="rag", status=ComponentStatus.UNHEALTHY,
+                             message=str(e))
+
+    async def _check_wiki(self) -> HealthCheck:
+        from haki.wiki import wiki
+        try:
+            pages = await wiki.get_all_pages()
+            return HealthCheck(name="wiki", status=ComponentStatus.HEALTHY,
+                             message=f"{len(pages)} pages")
+        except Exception as e:
+            return HealthCheck(name="wiki", status=ComponentStatus.UNHEALTHY,
                              message=str(e))
 
     def _check_disk(self) -> HealthCheck:

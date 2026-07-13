@@ -7,6 +7,9 @@ Inspired by Honcho's Architecture:
 - Provides retrieval APIs for RAG and context windows
 
 Backend: SQLite + FAISS for vector search.
+
+Note: The Wiki module (wiki.py) is the primary knowledge interface.
+This memory graph persists as the backend store and real-time event capture layer.
 """
 from __future__ import annotations
 
