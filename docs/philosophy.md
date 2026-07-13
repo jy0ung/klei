@@ -104,14 +104,17 @@ Health checks are now **metabolic monitoring** — not just "is it up?" but "is 
 haki/
 ├── organism.py      # Living base class (lifecycle, metabolism)
 ├── philosophy.py    # Self-questioning protocol (tensions, questions, proposals)
-├── wiki.py          # Wiki(Organism) — living knowledge graph
-├── brain/           # Brain — becomes adaptive over time
-├── memory/          # Fluid memory — nodes compete, merge, transform
+├── wiki.py          # Wiki(Organism)
+├── kaizen.py        # Continuous improvement log
+├── self_heal.py     # SelfHealer(Organism)
+├── brain/           # Brain(Organism)
+├── memory/          # MemoryGraph(Organism)
+├── lab/             # Lab(Organism)
+├── health/          # HealthMonitor(Organism)
 ├── daemon/
-│   └── main.py      # HakiDaemon(Organism) — runs becoming loop
-├── health/          # Metabolic monitoring
+│   └── main.py      # HakiDaemon(Organism) — health + becoming + self-heal
 └── cli/
-    └── __init__.py  # haki become status/question/propose
+    └── __init__.py  # status, become, kaizen, heal, ...
 ```
 
 ## Getting Started
@@ -129,7 +132,10 @@ haki become question
 # Propose a transformation based on tensions
 haki become propose
 
-# Run the daemon (becomes active)
+# Self-heal once
+haki heal
+
+# Run the daemon (becomes + heals actively)
 haki daemon
 ```
 
@@ -138,11 +144,13 @@ haki daemon
 | Command | Description |
 |---------|-------------|
 | `haki status` | Vitality of all modules (stage, ops, errors) |
-| `haki become status` | Current tensions and their intensity |
+| `haki become status` | Current tensions and intensity |
 | `haki become question` | System-generated question from tensions |
 | `haki become propose` | Proposed transformation |
+| `haki heal` | One self-healing cycle |
 | `haki wiki status` | Wiki statistics by page type |
 | `haki health` | Metabolic health report |
+| `haki kaizen list` | Continuous improvement log |
 
 ## Why This Works
 

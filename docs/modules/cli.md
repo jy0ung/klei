@@ -2,100 +2,98 @@
 
 Rich-based command-line interface for Haki.
 
-## Commands
+## Commands (v0.1.2)
 
 ```
-haki init          # Initialize directories
-haki daemon        # Start daemon
-haki chat          # Interactive chat
-haki chat -m "hi"  # Single message
-haki health        # System health report
-haki lab           # Run fine-tuning
-haki rag <query>   # RAG query
-haki ingest <file> # Ingest document
-haki status        # Quick status
+haki init
+haki daemon
+haki chat [-m MSG] [--tier narrow|wide]
+haki health
+haki heal
+haki status
+haki lab [-m MODEL] [-e EPOCHS]
+haki rag <query>
+haki ingest <path>
+haki wiki init|ingest|query|lint|status
+haki become status|question|propose
+haki kaizen list|add|stats
 ```
 
-## Chat Interactive Mode
-
-```
-┌─ Haki Chat ────────────────────────────────────────┐
-│ Type 'quit' or 'exit' to stop.                    │
-│ Commands: /health, /memory, /search, /remember    │
-└───────────────────────────────────────────────────┘
-
-You: Hello!
-Thinking...
-┌──────────────────────────────────────────┐
-│ Hi there! I'm Haki, your cognitive OS.   │
-│ How can I help you today?                │
-└──────────────────────────────────────────┘
-
-You: /health
-┌─ Health Report ──────────────────────────┐
-│ brain   │ healthy │ 0.1ms               │
-│ memory  │ healthy │ 2.3ms               │
-│ rag     │ healthy │ 0.5ms               │
-│ disk    │ healthy │ 0.0ms               │
-│ bus     │ healthy │ 0.0ms               │
-└──────────────────────────────────────────┘
-```
-
-## Slash Commands
-
-| Command | Description |
-|---------|-------------|
-| `/health` | Show full health report |
-| `/memory` | Show recent memories |
-| `/search <query>` | Semantic memory search |
-| `/remember <text>` | Store a fact |
-| `/quit` or `/exit` | Exit chat |
-
-## Status Output
+## Chat
 
 ```bash
-$ haki status
-┌─ Haki Status ────────────────────────────────────┐
-│ Narrow model: TinyLlama/TinyLlama-1.1B-Chat-v1.0 │
-│ Wide model: gpt-4o-mini                          │
-│ API configured: True                             │
-│ Data dir: ~/.haki                                │
-│ Lab dir: ~/.haki/lab                             │
-└──────────────────────────────────────────────────┘
+haki chat
+haki chat -m "What is Haki?"
+haki chat --tier wide -m "Explain the architecture"
 ```
 
-## Implementation
+Interactive slash commands:
 
-Built with Click (CLI framework) + Rich (terminal output).
+| Command | Action |
+|---------|--------|
+| `/health` | Health table |
+| `/memory` | Recent memories |
+| `/search <q>` | Memory search |
+| `/remember <text>` | Store insight |
+| `quit` / `exit` | Leave |
 
-```python
-@click.group()
-def cli():
-    """Haki — Cognitive OS."""
-    pass
+## Health & Heal
 
-@cli.command()
-@click.option("--message", "-m")
-@click.option("--tier", type=click.Choice(["narrow", "wide"]))
-def chat(message, tier):
-    """Chat with Haki's brain."""
-    ...
+```bash
+haki health
+haki heal
 ```
 
-## Configuration
+## Status (organisms)
 
-CLI inherits all env vars from `HakiConfig`. No separate config.
+```bash
+haki status
+```
 
-## Design Decisions
+Shows Daemon / Wiki / Brain / Lab stage + ops + errors.
 
-1. **Rich output**: Beautiful tables, panels, syntax highlighting
-2. **Click framework**: Composable commands, automatic help
-3. **Sync bridge**: `asyncio.run()` wraps async module calls
-4. **Interactive + scriptable**: Both REPL and one-shot commands
+## Wiki
 
-## Limitations
+```bash
+haki wiki init
+haki wiki ingest file.md -t "Title" -e "Entity1,Entity2" -c "Concept1"
+haki wiki query "question" -k 5
+haki wiki lint
+haki wiki status
+```
 
-- No streaming output (waits for full response)
-- No autocompletion or history
-- Windows terminal colors may need `rich.console.Console` adjustment
-- No progress bars for long operations (Lab training)
+## Becoming
+
+```bash
+haki become status
+haki become question
+haki become propose
+```
+
+## Kaizen
+
+```bash
+haki kaizen list -n 20
+haki kaizen stats
+haki kaizen add -t "..." -p "..." -a "..." -i "..." -c defect
+```
+
+## Lab
+
+```bash
+haki lab
+haki lab --epochs 1 --model TinyLlama/TinyLlama-1.1B-Chat-v1.0
+```
+
+Uses memory interactions; seeds baseline pairs if history is thin.
+
+## Implementation notes
+
+- Click group + Rich panels/tables  
+- Module imports use aliases (`lab_mod`, `rag_mod`) to avoid shadowing CLI command names  
+- Async modules bridged via `asyncio.run`  
+
+## Related
+
+- [api.md](../api.md)  
+- [quickstart.md](../quickstart.md)  

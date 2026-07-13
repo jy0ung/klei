@@ -4,20 +4,16 @@
 
 - Python 3.10+
 - 8GB+ RAM (16GB recommended)
-- Optional: NVIDIA GPU with 6GB+ VRAM for Lab fine-tuning
+- Optional: NVIDIA GPU for Lab fine-tuning / narrow model
 
 ## Install
 
 ```bash
-# Clone
 git clone https://github.com/jy0ung/klei.git
 cd klei
-
-# Install with all dependencies
 pip install -e .
-
-# Or minimal install (no GPU/training deps)
-pip install -e ".[cpu]"
+# optional dev tools
+pip install -e ".[dev]"
 ```
 
 ## Initialize
@@ -26,27 +22,28 @@ pip install -e ".[cpu]"
 haki init
 ```
 
-Creates:
-- `~/.haki/data/` — models directory
-- `~/.haki/memory.db` — persistent memory
-- `~/.haki/lab/` — experiment workspace
-- `~/.haki/rag.index` — document index
+Creates under `~/.haki/` (or `HAKI_DATA_DIR`):
+
+- `models/` — model cache  
+- `memory.db` — memory graph  
+- `lab/` — experiments  
+- `wiki/` — after `haki wiki init`  
+- `kaizen.jsonl` — after first kaizen seed/list  
 
 ## Configure
 
-Set environment variables or create `.env` in project root:
+`.env` or environment:
 
 ```bash
-# Required for wide model (LLM API)
 HAKI_LLM_API_KEY=sk-...
 HAKI_LLM_API_BASE=https://api.openai.com/v1
 HAKI_LLM_MODEL=gpt-4o-mini
-
-# Optional overrides
+# optional
 HAKI_NARROW_MODEL_ID=TinyLlama/TinyLlama-1.1B-Chat-v1.0
-HAKI_EMBEDDING_MODEL=all-MiniLM-L6-v2
-HAKI_LAB_GPU=true
+HAKI_LAB_MIN_TRAINING_PAIRS=3
 ```
+
+Without `HAKI_LLM_API_KEY`, wide-model chat returns a configuration error (narrow may still load if weights are available).
 
 ## First Chat
 
@@ -54,60 +51,82 @@ HAKI_LAB_GPU=true
 # Single message
 haki chat -m "Hello, what can you do?"
 
-# Interactive mode
+# Interactive
 haki chat
 ```
 
-Interactive commands:
-- `/health` — system status
-- `/memory` — show recent memories
-- `/search <query>` — semantic search
-- `/remember <text>` — store a fact
+Slash commands in interactive mode:
 
-## Check Health
+- `/health` — health report  
+- `/memory` — recent memories  
+- `/search <query>` — semantic search  
+- `/remember <text>` — store insight  
+
+## Health & Self-Heal
 
 ```bash
 haki health
+haki heal          # one autonomous recovery cycle (low-risk)
 ```
 
-Expected output:
-```
-┌─ Haki Health Report ─────────────┐
-│ brain      │ healthy  │ 0.1ms   │
-│ memory     │ healthy  │ 2.3ms   │
-│ rag        │ healthy  │ 0.5ms   │
-│ disk       │ healthy  │ 0.0ms   │
-│ bus        │ healthy  │ 0.0ms   │
-└──────────────────────────────────┘
-```
-
-## Run the Lab
+## Kaizen
 
 ```bash
-# Fine-tune on accumulated interactions
-haki lab --epochs 1
+haki kaizen list
+haki kaizen stats
+haki kaizen add -t "title" -p "problem" -a "action" -i "impact" -c defect
+```
 
-# View results
+## Wiki
+
+```bash
+haki wiki init
+haki wiki ingest notes.md --title "Notes" --entities "Haki" --concepts "cognitive OS"
+haki wiki query "What is Haki?"
+haki wiki lint
+haki wiki status
+```
+
+## Lab
+
+```bash
+# Uses real interactions if present; otherwise seeds baseline pairs
+haki lab --epochs 1
 cat ~/.haki/lab/results.tsv
 ```
 
-## Ingest Documents
+## Becoming
 
 ```bash
-haki ingest report.md
-haki rag "What does the report say about sales?"
+haki become status      # tensions
+haki become question    # system question
+haki become propose     # transformation proposal
+haki status             # organism vitality table
 ```
 
-## Start Daemon
+## Daemon
 
 ```bash
 haki daemon
 ```
 
-Keeps message bus running for MCP clients.
+Runs:
 
-## Next Steps
+- health monitor (`HAKI_HEALTH_INTERVAL`, default 30s)  
+- becoming loop (5m)  
+- self-heal loop (`HAKI_SELF_HEAL_INTERVAL`, default 300s)  
 
-- Read [architecture.md](architecture.md) to understand the system
-- See [modules/memory.md](modules/memory.md) for self-learning details
-- See [deployment.md](deployment.md) for production setup
+Stop with Ctrl+C.
+
+## Tests
+
+```bash
+pytest tests/ -v
+```
+
+## Next
+
+- [Architecture](architecture.md)  
+- [Philosophy](philosophy.md)  
+- [Kaizen](kaizen.md)  
+- [API](api.md)  

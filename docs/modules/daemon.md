@@ -1,136 +1,67 @@
 # Daemon Module
 
-The `hakid` daemon — Haki's central orchestration loop and message bus.
+The `hakid` orchestration process — message bus, health, becoming, and self-heal.
+
+## Location
+
+- `haki/daemon/bus.py` — `MessageBus`, `Event`  
+- `haki/daemon/main.py` — `HakiDaemon(Organism)`, `run_daemon()`  
+- `haki/daemon/__init__.py` — package exports  
 
 ## Architecture
 
 ```
-┌─────────────────────────────────────────────────────────────────┐
-│                         hakid daemon                             │
-│                                                                 │
-│  ┌─────────────────────────────────────────────────────────┐    │
-│  │                   MessageBus (pub/sub)                   │    │
-│  │                                                                 │
-│  │  Topics:                                                     │
-│  │  haki.start, haki.ready, haki.stop, haki.shutdown       │
-│  │  haki.health                                                 │
-│  │  brain.response                                              │
-│  │  memory.store, memory.search                                 │
-│  └─────────────────────────────────────────────────────────┘    │
-│                              │                                   │
-│  ┌──────────────┐  ┌────────┴────────┐  ┌──────────────────┐  │
-│  │ HealthMonitor│  │ Lab (optional)  │  │ MCP Bridge       │  │
-│  └──────────────┘  └─────────────────┘  └──────────────────┘  │
-│                                                                 │
-└─────────────────────────────────────────────────────────────────┘
+HakiDaemon(Organism)
+  ├── MessageBus (pub/sub)
+  ├── HealthMonitor.run()          # continuous
+  ├── _becoming_loop()             # ~5 minutes
+  └── _self_heal_loop()            # HAKI_SELF_HEAL_INTERVAL
 ```
 
 ## MessageBus
 
-The central coordination primitive — async pub/sub.
-
 ```python
 from haki.daemon.bus import bus, Event
 
-# Subscribe
-bus.subscribe("haki.health", my_handler)
-
-# Publish
-await bus.publish(Event(topic="test", payload={"msg": "hi"}, source="me"))
+bus.subscribe("haki.health", handler)
+await bus.publish(Event(topic="haki.health", payload={...}, source="health"))
 ```
 
-### Delivery Guarantees
+Delivery: at-most-once, sequential subscribers, no persistence.
 
-- **At-most-once**: no persistence, no retries
-- **In-order**: subscribers called sequentially
-- **Fire-and-forget**: `publish_sync()` creates task on running loop
+## Topics
 
-## Event Types
+| Topic | When |
+|-------|------|
+| `haki.start` | Daemon starting |
+| `haki.ready` | Subsystems online |
+| `haki.stop` / `haki.shutdown` | Teardown |
+| `haki.health` | Each health tick |
+| `haki.becoming` | Tension scan / proposal |
+| `haki.self_heal` | Recovery cycle result |
 
-|Topic | Payload | When |
-|-------|---------|------|
-|`haki.start` | `{}` | Daemon starting |
-|`haki.ready` | `{}` | All systems initialized |
-|`haki.stop` | `{}` | Daemon stopping |
-|`haki.shutdown` | `{}` | User requests stop |
-|`haki.health` | `SystemHealth.to_dict()` | Every health interval |
-|`brain.response` | `BrainResponse` | After each query |
+## Becoming loop
 
-## Lifecycle
+1. Gather wiki/memory/lab/health stats  
+2. `becoming.scan_for_tensions`  
+3. Generate questions  
+4. Propose transformation  
+5. Publish `haki.becoming`  
 
-```
-1. Startup
-   ↓  publish haki.start
-   ↓  Initialize subsystems
-   ↓  publish haki.ready
-   ↓  Start health monitor loop
-   ↓
-2. Running (event loop)
-   ↓  Wait for events
-   ↓
-3. Shutdown
-   ↓  Receive SIGINT/SIGTERM
-   ↓  publish haki.stop
-   ↓  Cancel tasks
-   ↓  Exit
-```
+## Self-heal loop
 
-## Running
+Calls `self_healer.cycle()` on interval. Updates `_last_meaningful_change` when recoveries succeed (used by stasis tension detection).
+
+## CLI
 
 ```bash
-# Foreground
 haki daemon
-
-# Systemd (see deployment.md)
-systemctl start hakid
-
-# Docker
-docker run -d haki haki daemon
 ```
 
-## Implementation
+Windows note: signal handlers may be unavailable; stop with Ctrl+C / process kill.
 
-### `HakiDaemon`
+## Related
 
-```python
-class HakiDaemon:
-    def __init__(self):
-        self.monitor = HealthMonitor()
-        self._tasks: list[asyncio.Task] = []
-
-    async def start(self):
-        # Publish ready, start health monitor, wait for shutdown
-        ...
-
-    async def stop(self):
-        # Cancel all tasks, publish stop
-        ...
-```
-
-### Signal Handling
-
-```python
-# Graceful shutdown on SIGINT/SIGTERM
-for sig in (signal.SIGINT, signal.SIGTERM):
-    loop.add_signal_handler(sig, lambda: asyncio.create_task(daemon.stop()))
-```
-
-## Configuration
-
-| Variable | Default | Description |
-|----------|---------|-------------|
-| `HAKI_HEALTH_INTERVAL` | `30` | Health tick interval (seconds) |
-
-## Design Decisions
-
-1. **Process-per-user**: One daemon per Haki instance (multi-tenant)
-2. **Async core**: All I/O is async; subscribers can be sync or async
-3. **Centralized logging**: All events flow through the bus, easy to tap
-4. **Graceful shutdown**: Cancels tasks cleanly without data corruption
-
-## Limitations
-
-- Single point of failure (needs supervisor for production)
-- No message persistence (events lost on restart)
-- No clustering/federation
-- No built-in auth for bus subscribers
+- [self_heal.md](self_heal.md)  
+- [health.md](health.md)  
+- [philosophy.md](../philosophy.md)  

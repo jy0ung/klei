@@ -1,15 +1,25 @@
 # Architecture
 
+**Version:** 0.1.2
+
 ## Design Principles
 
-Haki is built on four research pillars:
+1. **Intent-centric** — human sets goals; Haki operates modules  
+2. **Becoming, not being** — modules are living organisms with lifecycle + metabolism  
+3. **Compounding knowledge** — Wiki compiles sources; Memory captures interactions  
+4. **Kaizen** — small permanent fixes, measured and logged  
+5. **Low-risk self-heal** — recover without destructive side effects  
+
+## Research Pillars
 
 | Pillar | Source | Role |
 |--------|--------|------|
-| **Brain** | [CognitiveOS](https://cognitive-os.org/) | Dual-tier model orchestration |
-| **Memory** | [Honcho](https://docs.honcho.to/) | Persistent learning graph + Theory of Mind |
-| **RAG** | [AWS](https://aws.amazon.com/what-is/retrieval-augmented-generation/) | Knowledge grounding |
-| **Lab** | [Autoresearch](https://github.com/karpathy/autoresearch) | Autonomous model improvement |
+| **Brain** | [CognitiveOS](https://cognitive-os.org/) | Dual-tier orchestration |
+| **Memory** | [Honcho](https://docs.honcho.to/) | Graph + Theory of Mind |
+| **Wiki** | [LLM Wiki](https://gist.github.com/karpathy/442a6bf555914893e9891c11519de94f) | Persistent markdown knowledge |
+| **RAG** | [AWS](https://aws.amazon.com/what-is/retrieval-augmented-generation/) | Retrieval grounding |
+| **Lab** | [Autoresearch](https://github.com/karpathy/autoresearch) | Experiment / fine-tune loop |
+| **Self-Heal** | Self-healing agent patterns | L2 recovery cycles |
 
 ## System Layers
 
@@ -17,169 +27,169 @@ Haki is built on four research pillars:
 ┌─────────────────────────────────────────────────────────────────┐
 │                        User (Human)                              │
 ├─────────────────────────────────────────────────────────────────┤
-│                     CLI / TUI (Rich-based)                        │
+│              CLI (Rich) · MCP tools · status / heal              │
 ├─────────────────────────────────────────────────────────────────┤
-│                  hakid (daemon — message bus)                     │
+│   hakid — MessageBus + Health + Becoming + SelfHealer            │
 ├──────────────────┬──────────────────────────────────────────────┤
 │  Narrow Model    │  Wide Model (LLM API)                         │
-│  (local, fast)   │  (remote, capable)                            │
 ├──────────────────┴──────────────────────────────────────────────┤
-│  Memory Graph  │  RAG Pipeline  │  Lab  │  Self-Healing Health │
-├─────────────────────────────────────────────────────────────────┤
-│                        MCP Bridges                                │
+│ Memory │ Wiki │ RAG │ Lab │ Health │ Kaizen │ Philosophy         │
 ├─────────────────────────────────────────────────────────────────┤
 │                    Host OS (Linux / Win / Mac)                    │
 └─────────────────────────────────────────────────────────────────┘
 ```
+
+## Living Modules (Organisms)
+
+| Module | Class | Notes |
+|--------|-------|-------|
+| Brain | `Brain(Organism)` | Routes + pulses on think |
+| Memory | `MemoryGraph(Organism)` | Insights + user model |
+| Wiki | `Wiki(Organism)` | Markdown graph |
+| Lab | `Lab(Organism)` | Fine-tune + seed data |
+| Health | `HealthMonitor(Organism)` | Checks + recovery |
+| Daemon | `HakiDaemon(Organism)` | Orchestrates loops |
+| Self-Heal | `SelfHealer(Organism)` | Autonomous recovery |
 
 ## Data Flow
 
 ### 1. Query Processing
 
 ```
-User input → CLI
-           ↓
-      MessageBus.publish("user.input")
-           ↓
-      Brain.think(query)
-           ├── Routes to NARROW (simple queries)
-           └── Routes to WIDE (complex reasoning)
-           ↓
-      Memory.learn_from_interaction(input, output)
-           ↓
-      BrainResponse → CLI display
+User → CLI chat
+     → Brain.think(query)   # narrow | wide
+     → Memory.learn_from_interaction()
+     → insights + user_model update
+     → response panel
 ```
 
-### 2. Memory Self-Learning Loop
+### 2. Memory Self-Learning
 
 ```
-Every interaction:
-  1. Store raw interaction in SQLite
-  2. Extract insights (heuristic or LLM)
-  3. Generate embedding via sentence-transformers
-  4. Add to FAISS vector index
-  5. Update user model (Theory of Mind)
+interaction
+  → store in SQLite
+  → multi-pattern insight extraction
+  → embeddings (sentence-transformers)
+  → FAISS index
+  → Theory of Mind user_model row
 ```
 
-### 3. RAG Retrieval Flow
+### 3. Wiki Knowledge Compile
 
 ```
-Query → Embedding
-      ↓
-  Memory search (episodic context)
-  Document search (static knowledge)
-      ↓
-  Merge + rank by score
-      ↓
-  Build augmented prompt
-      ↓
-  Send to Brain (wide model)
+source ingest
+  → sources/ page
+  → entities/ + concepts/
+  → index.md + log.md
+  → content-aware query (title×3 + tags×2 + content×1)
 ```
 
-### 4. Autoresearch Loop
+### 4. RAG
 
 ```
-WHILE running:
-  1. Generate idea (LLM or heuristic)
-  2. Create training data from memory
-  3. Fine-tune via LoRA/PEFT (fixed time budget)
-  4. Evaluate val_bpb
-  5. IF improved → keep model
-     ELSE → discard
-  6. Log to results.tsv
+query → memory vectors + doc index → top_k → augmented prompt
 ```
 
-### 5. Health Monitoring
+### 5. Lab / Autoresearch
 
 ```
-Every 30s:
-  Check brain (model availability)
-  Check memory (DB connectivity)
-  Check rag (index integrity)
-  Check disk (space)
-  Check bus (event flow)
-      ↓
-  Publish haki.health event
-  IF unhealthy → attempt_recovery()
+interactions (or seed pairs)
+  → training.jsonl
+  → LoRA fine-tune (after min pair gate)
+  → val_bpb approximation
+  → results.tsv + best adapter path
 ```
 
-## Module Dependencies
+### 6. Health + Self-Heal
 
 ```
-CLI ──→ Brain ──→ LLM API (remote)
- │              ──→ Local model (optional)
- │
- ├──→ Memory (SQLite + FAISS)
- │       ↑
- ├──→ RAG (builds on Memory)
- │
- ├──→ Lab (fine-tunes using Memory data)
- │
- ├──→ Health (monitors all modules)
- │
- └──→ MessageBus (connects everything)
-          ↑
-     MCP Bridge (external access)
+every health_interval:
+  check brain/memory/rag/wiki/disk/bus
+  publish haki.health
+
+every self_heal_interval (or haki heal):
+  for degraded/unhealthy components:
+    low-risk recover (re-init; no heavy model downloads)
+  publish haki.self_heal
+  record kaizen if recoveries succeeded
+```
+
+### 7. Becoming
+
+```
+every 5 minutes:
+  gather module stats
+  scan tensions (gap, stasis, novelty, contradiction)
+  generate questions
+  propose transformation
+  publish haki.becoming
 ```
 
 ## Storage Layout
 
 ```
 ~/.haki/
-├── memory.db              # SQLite: memories, interactions, user_model
-├── memory.db.faiss        # FAISS index for memory vectors
-├── memory.db.docs.faiss   # FAISS index for RAG documents
-├── memory.db.docs.json    # Document text sidecar
-├── rag.index              # RAG document cache
-├── models/                # Downloaded models (transformers cache)
-│   ├── TinyLlama-1.1B-Chat-v1.0/
-│   └── sentence-transformers/
+├── memory.db (+ .faiss)
+├── wiki/                 # schema, index, log, entities, concepts, ...
 ├── lab/
-│   ├── experiments/       # Experiment configs & checkpoints
-│   ├── models/            # Fine-tuned LoRA adapters
-│   ├── data/              # Generated training data (JSONL)
-│   ├── logs/              # Training logs
-│   └── results.tsv        # Experiment results
-└── config.json            # (future) runtime config
+│   ├── data/training.jsonl
+│   ├── models/<exp_id>/adapter/
+│   └── results.tsv
+├── models/               # HF cache
+└── kaizen.jsonl          # continuous improvement log
 ```
-
-## Threading Model
-
-- **All modules are async** — use `asyncio` via `async/await`
-- **MessageBus** is the central coordination primitive (pub/sub)
-- **Daemon** runs the event loop, monitoring, and health checks
-- **CLI** runs synchronous entry points that bridge into async via `asyncio.run()`
 
 ## Configuration
 
-All config via `HakiConfig` (Pydantic Settings):
+Via `HakiConfig` (`pydantic-settings`, `SettingsConfigDict`, env prefix `HAKI_`):
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `HAKI_DATA_DIR` | `~/.haki` | Root data directory |
-| `HAKI_NARROW_MODEL_ID` | `TinyLlama/TinyLlama-1.1B-Chat-v1.0` | Local model |
-| `HAKI_LLM_API_KEY` | `""` | LLM API key |
-| `HAKI_LLM_API_BASE` | `https://api.openai.com/v1` | LLM API endpoint |
-| `HAKI_LLM_MODEL` | `gpt-4o-mini` | Wide model name |
-| `HAKI_EMBEDDING_MODEL` | `all-MiniLM-L6-v2` | Embedding model |
-| `HAKI_RAG_CHUNK_SIZE` | `512` | RAG chunk size in words |
-| `HAKI_RAG_TOP_K` | `5` | RAG retrieval count |
-| `HAKI_LAB_TIME_BUDGET` | `300` | Seconds per experiment |
-| `HAKI_HEALTH_INTERVAL` | `30` | Health check interval (s) |
+| `DATA_DIR` | `~/.haki` | Root |
+| `NARROW_MODEL_ID` | TinyLlama 1.1B | Local model |
+| `LLM_API_KEY` | `""` | Wide API key |
+| `LLM_API_BASE` | OpenAI | Endpoint |
+| `LLM_MODEL` | `gpt-4o-mini` | Wide model |
+| `EMBEDDING_MODEL` | `all-MiniLM-L6-v2` | Embeddings |
+| `RAG_CHUNK_SIZE` | `512` | Words/chunk |
+| `RAG_TOP_K` | `5` | Retrieve count |
+| `LAB_TIME_BUDGET` | `300` | Seconds |
+| `LAB_MIN_TRAINING_PAIRS` | `3` | Min pairs |
+| `HEALTH_INTERVAL` | `30` | Seconds |
+| `SELF_HEAL_INTERVAL` | `300` | Seconds |
 
-## Extending Haki
+## Bus Topics
 
-Add modules by:
+| Topic | Purpose |
+|-------|---------|
+| `haki.start` / `ready` / `stop` / `shutdown` | Lifecycle |
+| `haki.health` | Health report payload |
+| `haki.becoming` | Tensions + proposals |
+| `haki.self_heal` | Recovery actions |
 
-1. Create `haki/<module>/__init__.py`
-2. Initialize in `daemon/main.py`
-3. Subscribe to bus topics
-4. Add MCP tools via `mcp/__init__.py`
-5. Add CLI commands in `cli/__init__.py`
+## Module Dependencies
+
+```
+CLI → Brain, Memory, Wiki, RAG, Lab, Health, SelfHealer, Kaizen
+Daemon → HealthMonitor, Becoming, SelfHealer, MessageBus
+Lab → Memory (training pairs)
+RAG → Memory + FAISS docs
+Wiki → filesystem markdown
+Brain → optional local HF model + remote LLM API
+```
+
+## Extending
+
+1. Subclass `Organism` when possible  
+2. `async def initialize()` + `pulse()` on real work  
+3. Register health checks / self-heal recoverers  
+4. Add CLI + MCP tools  
+5. Document in `docs/modules/`  
+6. Record improvement with `haki kaizen add`  
 
 ## Security Notes
 
-- No auth built-in for daemon (localhost only)
-- API keys stored in env vars, not persisted
-- SQLite DB has no encryption (encrypt at rest separately if needed)
-- MCP bridge has no rate limiting (add reverse proxy in prod)
+- Daemon is localhost-oriented; no built-in multi-tenant auth  
+- Self-heal never auto-downloads large models  
+- API keys only via env / `.env`  
+- SQLite not encrypted at rest  

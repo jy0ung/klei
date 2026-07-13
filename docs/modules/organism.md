@@ -124,21 +124,19 @@ Death is not failure — it's the necessary end that makes room for new birth. I
 
 ## Integration
 
-Every Haki module extends Organism:
+Every long-lived Haki module extends Organism:
 
 ```python
-class Wiki(Organism):
-    def __init__(self):
-        super().__init__("Wiki")
-        # ... wiki-specific init
-
-class HakiDaemon(Organism):
-    def __init__(self):
-        super().__init__("Daemon")
-        # ... daemon-specific init
+class Wiki(Organism): ...
+class Brain(Organism): ...
+class MemoryGraph(Organism): ...
+class Lab(Organism): ...
+class HealthMonitor(Organism): ...
+class HakiDaemon(Organism): ...
+class SelfHealer(Organism): ...
 ```
 
-After each significant operation, call `self.pulse()` to register metabolic activity. On errors, call `self.error()`.
+After each significant operation, call `self.pulse()`. On errors, call `self.error()`.
 
 ## CLI
 

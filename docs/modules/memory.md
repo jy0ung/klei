@@ -1,122 +1,59 @@
 # Memory Module
 
-Haki's persistent self-learning memory graph, inspired by Honcho.
+Persistent self-learning memory graph (Honcho-inspired), implemented as `MemoryGraph(Organism)`.
 
-## Architecture
+## Backend
 
-```
-┌─────────────────────────────────────────┐
-│               Memory Graph               │
-│                                         │
-│  ┌─────────┐  ┌──────────┐  ┌────────┐ │
-│  │ Messages │  │ Insights │  │ User   │ │
-│  │ (raw)    │  │ (learned)│  │ Model  │ │
-│  └─────────┘  └──────────┘  └────────┘ │
-│                                         │
-│  Backend: SQLite + FAISS vectors         │
-│  Embeddings: sentence-transformers       │
-└─────────────────────────────────────────┘
-```
+- **SQLite** — memories, interactions, user_model  
+- **FAISS** — vector index (inner product on L2-normalized embeddings)  
+- **sentence-transformers** — embeddings (`HAKI_EMBEDDING_MODEL`)  
 
-## Storage
+Wiki is the primary *compiled* knowledge UI; Memory is the *event + embedding* store.
 
-### SQLite Tables
+## Tables
 
 | Table | Purpose |
 |-------|---------|
-| `memories` | All memory nodes (id, content, role, embedding, metadata, importance) |
-| `user_model` | Theory of Mind — psychological profile of the user |
-| `interactions` | Raw conversation log (user_input, assistant_output, tier, timestamp) |
+| `memories` | Nodes (content, role, embedding, importance) |
+| `interactions` | User/assistant turns + tier |
+| `user_model` | Theory of Mind snapshot |
 
-### FAISS Index
+## Roles
 
-- Separate index for memory embeddings
-- Inner product (cosine similarity after normalization)
-- Sidecar JSON for document text storage
+`user` · `assistant` · `system` · `insight`
 
-## Node Types
+## Self-learning
 
-| Role | Description |
-|------|-------------|
-| `user` | User messages |
-| `assistant` | Haki responses |
-| `system` | System events |
-| `insight` | Extracted facts (preferences, name, dislikes) |
+`learn_from_interaction(user, assistant)`:
 
-## Self-Learning Loop
+1. Stores interaction  
+2. Extracts insights via multi-pattern rules (prefs, dislikes, name, goals, constraints, workplace, style)  
+3. Stores insight nodes  
+4. Updates `user_model` preferences / theory_of_mind  
 
-```
-Interaction → store_interaction()
-                 ↓
-            _extract_insights()
-                 ↓
-            store_memory() (role="insight")
-                 ↓
-            Add to FAISS index
-                 ↓
-            Update user_model
-```
+## Embedding API compat
 
-## Usage
+Uses `_embedding_dim()` which prefers `get_embedding_dimension()` and falls back to legacy `get_sentence_embedding_dimension()`.
+
+## API
 
 ```python
 from haki.memory import memory, MemoryNode
-from datetime import datetime
 
 await memory.initialize()
-
-# Store a memory
-node = MemoryNode(
-    id="fact-1",
-    content="User prefers Python over JavaScript",
-    role="insight",
-    importance=1.0,
-)
-await memory.store_memory(node)
-
-# Search
-results = await memory.search("programming language preference", top_k=5)
-for r in results:
-    print(f"[{r.role}] {r.content} (importance={r.importance})")
-
-# Log interaction
-await memory.learn_from_interaction("I love Python", "I'll remember that!")
-
-# Update user model
-await memory.update_user_model(
-    theory_of_mind="User is a Python developer who likes concise answers",
-    preferences={"language": "Python", "style": "terse"},
-    comm_style="technical",
-)
+await memory.learn_from_interaction("I prefer concise answers", "OK")
+hits = await memory.search("communication style")
+model = await memory.get_user_model()
 ```
 
-## Retrieval API
+## Design notes
 
-| Method | Description |
-|--------|-------------|
-| `search(query, top_k)` | Semantic search across all memories |
-| `get_all()` | Get all memories ordered by time |
-| `get_recent_interactions(n)` | Last N interactions for context |
-| `get_user_model()` | Current Theory of Mind model |
+- Single-user peer model for now  
+- Importance reinforcement on retrieval  
+- Insight extraction is structured heuristics (LLM extraction is a future upgrade)  
 
-## Configuration
+## Related
 
-| Variable | Default | Description |
-|----------|---------|-------------|
-| `HAKI_EMBEDDING_MODEL` | `all-MiniLM-L6-v2` | Sentence transformer model |
-| `HAKI_RAG_TOP_K` | `5` | Search results count |
-| `HAKI_DATA_DIR` | `~/.haki` | DB location |
-
-## Design Decisions
-
-1. **Peer-centric**: memories linked to a single user model (will support multi-peer)
-2. **Self-reinforcing**: importance increases with retrieval score
-3. **Ephemeral by default**: insights decay unless reinforced
-4. **Vector + relational**: FAISS for similarity, SQLite for structured queries
-
-## Limitations
-
-- Single-user only (multi-tenant requires per-user DBs)
-- Insight extraction is heuristic, not LLM-based
-- No TTL or automatic pruning
-- No encryption at rest
+- [wiki.md](wiki.md)  
+- [rag.md](rag.md)  
+- [organism.md](organism.md)  

@@ -1,76 +1,129 @@
 # API Reference
 
-## Brain
+**Version:** 0.1.2
 
-### `haki.brain.Brain`
+## Config
 
-Dual-tier model orchestrator.
+### `haki.config.HakiConfig`
 
 ```python
-class Brain:
-    narrow_model_id: str          # Model identifier
-    narrow_model: PreTrainedModel | None
-    narrow_tokenizer: PreTrained | None
+class HakiConfig(BaseSettings):
+    model_config = SettingsConfigDict(env_prefix="HAKI_", env_file=".env", extra="ignore")
 
-    async def initialize() → None
-    async def think(query: str, force_tier: TierChoice | None = None) → BrainResponse
+    data_dir: Path
+    models_dir: Path
+    memory_db: Path
+    lab_dir: Path
+    narrow_model_id: str
+    llm_api_key: str
+    llm_api_base: str
+    llm_model: str
+    embedding_model: str
+    rag_chunk_size: int
+    rag_top_k: int
+    lab_time_budget_seconds: int
+    lab_gpu: bool
+    lab_min_training_pairs: int
+    health_check_interval_seconds: int
+    self_heal_interval_seconds: int
 ```
 
-### `BrainResponse`
+Singleton: `from haki.config import config`
+
+---
+
+## Organism
+
+### `haki.organism.Organism`
+
+Base class for living modules.
+
+```python
+class Organism:
+    name: str
+    stage: LifeStage
+    metabolism: Metabolism
+
+    def pulse(operation: str = "", input_bytes: int = 0, output_bytes: int = 0) -> None
+    def error() -> None
+    def adapt(reason: str, change: dict) -> None
+    def transform(new_structure: dict) -> None
+    def get_vitality() -> dict
+    def die() -> None
+    @property is_alive -> bool
+```
+
+`LifeStage`: `birth | growth | maturity | transformation | dormancy | death`
+
+---
+
+## Brain
+
+### `haki.brain.Brain(Organism)`
+
+```python
+class Brain(Organism):
+    async def initialize() -> None
+    async def think(query: str, force_tier: TierChoice | None = None) -> BrainResponse
+    def route_stats() -> dict[str, int]   # if present
+    @property narrow_loaded -> bool
+    @property wide_configured -> bool
+```
+
+### `BrainResponse` / `TierChoice`
 
 ```python
 @dataclass
 class BrainResponse:
-    text: str                    # Generated response
-    tier: TierChoice             # Which tier responded
+    text: str
+    tier: TierChoice
     tokens_in: int = 0
     tokens_out: int = 0
     latency_ms: float = 0.0
     model: str = ""
     error: str | None = None
-```
 
-### `TierChoice`
-
-```python
 class TierChoice(str, Enum):
-    NARROW = "narrow"    # Local small model
-    WIDE = "wide"        # Remote LLM API
+    NARROW = "narrow"
+    WIDE = "wide"
 ```
 
 ---
 
 ## Memory
 
-### `haki.memory.MemoryGraph`
-
-Persistent, self-learning memory.
+### `haki.memory.MemoryGraph(Organism)`
 
 ```python
-class MemoryGraph:
-    async def initialize() → None
-    async def store_memory(node: MemoryNode) → None
-    async def store_interaction(user_input: str, assistant_output: str, tier: str = "") → None
-    async def search(query: str, top_k: int | None = None) → list[MemoryNode]
-    async def get_all() → list[MemoryNode]
-    async def learn_from_interaction(user_input: str, assistant_output: str) → None
-    async def update_user_model(theory_of_mind: str, preferences: dict, comm_style: str) → None
-    async def get_user_model() → dict[str, Any] | None
-    async def get_recent_interactions(n: int = 20) → list[dict]
+class MemoryGraph(Organism):
+    async def initialize() -> None
+    async def store_memory(node: MemoryNode) -> None
+    async def store_interaction(user_input: str, assistant_output: str, tier: str = "") -> None
+    async def search(query: str, top_k: int | None = None) -> list[MemoryNode]
+    async def get_all() -> list[MemoryNode]
+    async def learn_from_interaction(user_input: str, assistant_output: str) -> None
+    async def update_user_model(theory_of_mind: str, preferences: dict, comm_style: str) -> None
+    async def get_user_model() -> dict | None
+    async def get_recent_interactions(n: int = 20) -> list[dict]
 ```
 
-### `MemoryNode`
+Insight extraction covers preferences, dislikes, name, goals, constraints, workplace, style.
+
+---
+
+## Wiki
+
+### `haki.wiki.Wiki(Organism)`
 
 ```python
-@dataclass
-class MemoryNode:
-    id: str
-    content: str
-    role: str                    # "user", "assistant", "system", "insight"
-    embedding: list[float] | None
-    metadata: dict[str, Any]
-    created_at: datetime
-    importance: float
+class Wiki(Organism):
+    async def initialize() -> None
+    async def ingest_source(path, title=None, summary=None, entities=None, concepts=None) -> dict
+    async def ingest_text(title, text, source="memory", entities=None, concepts=None) -> dict
+    async def query(question, top_k=5) -> dict   # content-aware scoring
+    async def lint() -> WikiLintResult
+    async def get_all_pages() -> list[WikiPage]
+    def wiki_path() -> Path
 ```
 
 ---
@@ -79,164 +132,130 @@ class MemoryNode:
 
 ### `haki.rag.RAGPipeline`
 
-Retrieval-augmented generation.
-
 ```python
 class RAGPipeline:
-    async def initialize() → None
-    async def add_document(text: str, source: str = "unknown", metadata: dict | None = None) → None
-    async def retrieve(query: str, top_k: int | None = None) → RAGResult
-    def _chunk_text(text: str, chunk_size: int | None = None, overlap: int = 50) → list[str]
-    def _build_augmented_prompt(query: str, chunks: list[dict]) → str
-```
-
-### `RAGResult`
-
-```python
-@dataclass
-class RAGResult:
-    query: str
-    retrieved_chunks: list[dict[str, Any]]
-    augmented_prompt: str
-    metadata: dict[str, Any]
+    async def initialize() -> None
+    async def add_document(text: str, source: str = "unknown", metadata: dict | None = None) -> None
+    async def retrieve(query: str, top_k: int | None = None) -> RAGResult
 ```
 
 ---
 
 ## Lab
 
-### `haki.lab.Lab`
-
-Autonomous model creation.
+### `haki.lab.Lab(Organism)`
 
 ```python
-class Lab:
-    async def initialize() → None
-    async def create_training_data_from_memory() → Path
-    async def fine_tune_model(model_id: str | None = None, epochs: int = 1,
-                               time_budget_seconds: int | None = None) → ExperimentResult
-    async def run_autoresearch_loop(max_experiments: int = 100) → None
-    def get_results() → list[ExperimentResult]
-    def get_best_model() → Path | None
-    def stop() → None
+class Lab(Organism):
+    async def initialize() -> None
+    async def create_training_data_from_memory(allow_seed: bool = True) -> Path
+    def training_pair_count(data_path: Path | None = None) -> int
+    async def fine_tune_model(
+        model_id: str | None = None,
+        epochs: int = 1,
+        time_budget_seconds: int | None = None,
+        allow_seed: bool = True,
+    ) -> ExperimentResult
+    async def run_autoresearch_loop(max_experiments: int = 100) -> None
+    def get_results() -> list[ExperimentResult]
+    def get_best_model() -> Path | None
+    def stop() -> None
 ```
 
-### `ExperimentResult`
-
-```python
-@dataclass
-class ExperimentResult:
-    id: str
-    description: str
-    status: str                  # "success", "failed", "aborted"
-    val_bpb: float | None
-    val_loss: float | None
-    training_seconds: float
-    peak_vram_mb: float
-    total_tokens: int
-    description_text: str
-    created_at: datetime
-```
+Seeds baseline instruction pairs when history is below `lab_min_training_pairs`.
 
 ---
 
 ## Health
 
-### `haki.health.HealthMonitor`
-
-Self-healing subsystem.
+### `haki.health.HealthMonitor(Organism)`
 
 ```python
-class HealthMonitor:
-    async def run() → None                    # Continuous monitoring loop
-    async def check_all() → SystemHealth
-    def get_report() → SystemHealth
-    def register_check(name: str, callback: Callable) → None
-    async def attempt_recovery(component: str) → bool
-    def stop() → None
+class HealthMonitor(Organism):
+    async def run() -> None
+    async def check_all() -> SystemHealth
+    def get_report() -> SystemHealth
+    def register_check(name: str, callback: Callable) -> None
+    async def attempt_recovery(component: str) -> bool
+    def stop() -> None
 ```
 
-### `SystemHealth`
+Checks: `brain`, `memory`, `rag`, `wiki`, `disk`, `bus`.
+
+---
+
+## Self-Heal
+
+### `haki.self_heal.SelfHealer(Organism)`
 
 ```python
-@dataclass
-class SystemHealth:
-    overall: ComponentStatus
-    checks: list[HealthCheck]
-    uptime_seconds: float
-    memory_usage_mb: float
+class SelfHealer(Organism):
+    async def cycle() -> dict
+    async def recover(component: str, message: str = "") -> HealAction
+    def history(n: int = 20) -> list[dict]
 ```
 
-### `ComponentStatus`
+Low-risk recovery only (re-init modules; no large model downloads).
+
+---
+
+## Kaizen
+
+### `haki.kaizen.KaizenLog`
 
 ```python
-class ComponentStatus(str, Enum):
-    HEALTHY = "healthy"
-    DEGRADED = "degraded"
-    UNHEALTHY = "unhealthy"
-    UNKNOWN = "unknown"
+class KaizenLog:
+    def record(title, problem, action, impact, category="general", status="done") -> Improvement
+    def list(limit: int = 50) -> list[Improvement]
+    def stats() -> dict
+```
+
+`seed_if_empty()` records bootstrap improvements once.
+
+---
+
+## Philosophy / Becoming
+
+### `haki.philosophy.Becoming`
+
+```python
+class Becoming:
+    async def scan_for_tensions(context: dict) -> list[Tension]
+    async def generate_question(tension: Tension | None = None) -> Question
+    async def propose_transformation(tensions: list[Tension]) -> dict
 ```
 
 ---
 
-## Daemon / MessageBus
+## Daemon / Bus
 
-### `haki.daemon.bus.MessageBus`
+### `MessageBus`
 
 ```python
 class MessageBus:
-    def subscribe(topic: str, callback: Callable) → None
-    def unsubscribe(topic: str, callback: Callable) → None
-    async def publish(event: Event) → None
-    def publish_sync(event: Event) → None
-    def recent(topic: str | None = None, n: int = 50) → list[Event]
+    def subscribe(topic: str, callback: Callable) -> None
+    def unsubscribe(topic: str, callback: Callable) -> None
+    async def publish(event: Event) -> None
+    def publish_sync(event: Event) -> None
+    def recent(topic: str | None = None, n: int = 50) -> list[Event]
 ```
 
-### `Event`
+### `HakiDaemon(Organism)`
 
-```python
-@dataclass
-class Event:
-    topic: str
-    payload: Any
-    timestamp: datetime
-    source: str
-```
-
-### Bus Topics
-
-| Topic | Payload | Source |
-|-------|---------|--------|
-| `haki.start` | `{}` | daemon |
-| `haki.ready` | `{}` | daemon |
-| `haki.stop` | `{}` | daemon |
-| `haki.health` | `SystemHealth.to_dict()` | health |
-| `haki.shutdown` | `{}` | user |
+Runs health, becoming, and self-heal loops.
 
 ---
 
-## MCP Bridge
-
-### `haki.mcp.MCPBridge`
-
-```python
-class MCPBridge:
-    TOOLS: list[dict]             # MCP tool definitions
-
-    async def list_tools() → list[dict]
-    async def call_tool(name: str, arguments: dict) → list[dict]
-```
-
-### Available Tools
+## MCP Tools
 
 | Tool | Description |
 |------|-------------|
-| `haki_chat` | Send message to brain |
-| `haki_remember` | Store persistent memory |
-| `haki_recall` | Semantic memory search |
-| `haki_health` | System health status |
-| `haki_rag_query` | RAG-augmented query |
-| `haki_lab_run` | Run model creation experiment |
+| `haki_chat` | Brain chat |
+| `haki_remember` / `haki_recall` | Memory write/search |
+| `haki_health` | Health report |
+| `haki_rag_query` | RAG retrieve |
+| `haki_lab_run` | Fine-tune experiment |
+| `wiki_init` / `wiki_ingest` / `wiki_query` / `wiki_lint` | Wiki ops |
 
 ---
 
@@ -244,11 +263,15 @@ class MCPBridge:
 
 | Command | Description |
 |---------|-------------|
-| `haki init` | Initialize directories |
+| `haki init` | Create data dirs |
 | `haki daemon` | Start daemon |
-| `haki chat [-m msg] [--tier]` | Chat or single message |
+| `haki chat [-m] [--tier]` | Chat |
 | `haki health` | Health report |
-| `haki lab [--model] [--epochs]` | Run fine-tuning |
+| `haki heal` | One self-heal cycle |
+| `haki status` | Organism vitality |
+| `haki lab [--model] [--epochs]` | Fine-tune |
 | `haki rag <query>` | RAG query |
-| `haki ingest <file>` | Add document |
-| `haki status` | Quick status |
+| `haki ingest <file>` | Ingest into RAG |
+| `haki wiki …` | Wiki init/ingest/query/lint/status |
+| `haki become …` | status/question/propose |
+| `haki kaizen …` | list/add/stats |
